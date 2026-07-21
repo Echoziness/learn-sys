@@ -65,7 +65,7 @@ async def main() -> None:
     )
     retriever = Retriever(
         db_path=settings.database_path,
-        encoder=BGEEncoder(cache_folder=settings.bge_model_path),
+        encoder=BGEEncoder(cache_folder=settings.bge_model_path, local_files_only=True),
         rrf_k=settings.rrf_k,
         coverage_min_score=settings.coverage_min_score,
     )
