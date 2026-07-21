@@ -26,11 +26,11 @@ Phase 1 任务: □骨架 □知识库 □Provider □检索 □诊断Agent □�
 uv sync
 cd web && pnpm install
 
-# 初始化知识库
+# 初始化知识库（幂等，可反复运行）
 uv run python scripts/init_db.py
 
-# 后端（开发阶段用 CLI）
-uv run python api/main.py
+# 后端（Phase 1 为 CLI，Phase 3 挂 FastAPI）
+uv run python scripts/run_cli.py test1
 
 # 前端
 cd web && pnpm dev

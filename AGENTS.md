@@ -21,26 +21,30 @@
 
 ```
 learn-sys/
-├── core/                    # Python 包
-│   ├── agents/              # 每个 agent 一个文件
+├── core/                    # Python 包（禁止任何模块级副作用）
+│   ├── agents/              # 每个 agent 一个文件；节点签名 (state, *, provider, model)
 │   │   ├── diagnose.py      # 学情诊断
 │   │   ├── generate.py      # 领域知识生成
-│   │   └── review.py        # 审核裁判
-│   ├── state.py             # AgentState（Pydantic/TypedDict）
-│   ├── graph.py             # StateGraph 装配（编译一次，运行时复用）
-│   ├── llm.py               # Provider 抽象（AsyncOpenAI）
-│   └── retrieval.py         # FTS5 + sqlite-vec 混合检索 + RRF
-├── api/                     # FastAPI（薄层，只做序列化→转发→推流）
-│   ├── routes/
-│   └── main.py
-├── web/                     # Next.js 15
-│   ├── app/
-│   ├── components/
-│   │   └── ui/              # shadcn CLI 生成，由 shadcn MCP 管理
-│   └── lib/                 # SSE client / API 封装 / 类型
+│   │   └── review.py        # 审核裁判（rule_check/merge_verdicts 为纯函数，可单测）
+│   ├── state.py             # AgentState + 全部 agent 间消息的 Pydantic 模型
+│   ├── graph.py             # build_graph(settings, provider, retriever) 依赖注入装配
+│   ├── llm.py               # LLMProvider（AsyncOpenAI）+ chat_validated 校验重试
+│   ├── retrieval.py         # Retriever 类：FTS5(CJK逐字切分) + sqlite-vec + RRF + 覆盖度判定
+│   ├── embedding.py         # BGEEncoder（仅组合根 import，加载 ~2GB 模型）
+│   ├── config.py            # Settings：全项目唯一 env 读取点
+│   └── logging.py           # structlog JSON 配置
+├── api/                     # FastAPI（薄层，只做序列化→转发→推流，Phase 3 挂载）
+│   └── routes/
+├── scripts/                 # 组合根
+│   ├── init_db.py           # 幂等知识库 loader（数据来自 data/seeds/，不内嵌数据）
+│   └── run_cli.py           # Phase 1 CLI：装配依赖 → 读 DB 画像 → 跑图
 ├── data/
-│   └── knowledge.db         # 业务 + FTS5 + vec（单文件）
-├── evals/                   # 评测脚本 + 50 组画像 + Dockerfile
+│   ├── seeds/<domain>/entries.jsonl  # 知识条目（一等数据文件，换目录即换领域）
+│   ├── seeds/profiles/*.json         # 学习者画像种子
+│   └── knowledge.db         # 业务 + FTS5 + vec（单文件，由 init_db 生成）
+├── tests/                   # pytest，与 evals/metrics.py 同口径
+├── evals/                   # metrics.py（指标 SSOT）+ profiles/ + run.py
+├── web/                     # Next.js 15（Phase 4）
 └── docker-compose.yml
 ```
 
@@ -60,7 +64,7 @@ web/ ──(SSE)──→ api/ ──→ core/ ──→ data/
 
 ### 3.3 图编译
 
-`core/graph.py` 中一次 `build_graph().compile()`，返回的编译图实例作为全局单例。运行时只调 `graph.astream()` / `graph.ainvoke()`。
+`build_graph(settings, provider, retriever)` 在组合根（scripts/run_cli.py、api/）装配并编译一次，编译产物由组合根持有复用。运行时只调 `graph.astream()` / `graph.ainvoke()`。core/ 内任何模块禁止 import 时产生副作用（建 client、加载模型、读 env）。
 
 ### 3.4 Agent 编排流
 
@@ -115,12 +119,12 @@ diagnose → plan → retrieve → generate → review → deliver/retry → ass
 
 ```bash
 uv sync                                          # Python 依赖
-uv run uvicorn api.main:app --reload --port 8000  # 后端
+uv run python scripts/run_cli.py test1            # Phase 1 CLI（Phase 3 后为 uvicorn api.main:app）
 cd web && pnpm install && pnpm dev                # 前端
 uv run pytest -v                                  # 测试
 uv run pyright core/ api/                         # Python 类型检查
 cd web && pnpm typecheck && pnpm lint             # 前端类型检查
-uv run python scripts/init_db.py                  # 初始化知识库
+uv run python scripts/init_db.py                  # 初始化知识库（幂等）
 uv run python evals/run.py                        # 评测（晚间/周末跑）
 docker compose up --build                         # 交付启动
 ```
