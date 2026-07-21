@@ -1,0 +1,13 @@
+{
+  "learner_id": "test1",
+  "name": "测试学员-转行数据分析",
+  "background": {
+    "education": "本科大二",
+    "major": "机械工程",
+    "goal": "转行数据分析",
+    "experience": "学过 C 语言基础，会用 Excel 做简单统计，未接触过数据库和 Python"
+  },
+  "mastery": {},
+  "style_tags": ["code-first"],
+  "note": "初始画像，尚未进行知识诊断"
+}

@@ -1,52 +1,100 @@
-"""LLM Provider 抽象层。所有 LLM 调用通过此模块，走 OpenAI 兼容协议。
+"""LLM Provider：所有 LLM 调用的唯一入口，走 OpenAI 兼容协议。
 
-每个 Agent 可通过环境变量 DIAGNOSE_MODEL / GENERATE_MODEL / REVIEW_MODEL 指定独立模型。
-若未设置，fallback 到全局 LLM_MODEL。不硬编码任何模型名。"""
+无模块级单例——由组合根实例化后显式注入各 agent。
+LLM 输出统一经 chat_validated 做 Pydantic 校验，失败带修复提示重试一次，仍失败抛 LLMOutputError。
+"""
 
-import os, structlog
-from openai import AsyncOpenAI
-from dotenv import load_dotenv
+from __future__ import annotations
 
-load_dotenv()
+from collections.abc import Iterable
+from typing import TypeVar, cast
+
+import structlog
+from openai import AsyncOpenAI, BadRequestError
+from openai.types.chat import ChatCompletionMessageParam
+from pydantic import BaseModel, ValidationError
+
 logger = structlog.get_logger()
+
+T = TypeVar("T", bound=BaseModel)
+
+
+class LLMOutputError(Exception):
+    """LLM 输出经修复重试后仍无法通过 schema 校验。禁止静默降级，显式抛出。"""
 
 
 class LLMProvider:
-    """OpenAI 兼容协议的统一入口。"""
+    """OpenAI 兼容协议的统一入口。base_url / api_key / model 全部显式传入。"""
 
-    def __init__(self, base_url: str | None = None, api_key: str | None = None, model: str | None = None):
-        self.base_url = base_url or os.getenv("LLM_BASE_URL", "https://api.openai.com/v1")
-        self.api_key = api_key or os.getenv("LLM_API_KEY", "")
-        self.model = model or os.getenv("LLM_MODEL", "gpt-4o-mini")
-        self.client = AsyncOpenAI(base_url=self.base_url, api_key=self.api_key)
-        logger.info("llm_provider_ready", base_url=self.base_url[:40], model=self.model)
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str,
+        model: str,
+        extra_body: dict | None = None,
+    ):
+        self.model = model
+        self._extra_body = extra_body
+        self._client = AsyncOpenAI(base_url=base_url, api_key=api_key)
+        logger.info("llm_provider_ready", base_url=base_url, model=model)
 
-    async def chat(self, messages: list[dict], model: str | None = None, **kwargs) -> str:
-        kwargs.setdefault("extra_body", {"thinking": {"type": "disabled"}})
-        resp = await self.client.chat.completions.create(
-            model=model or self.model, messages=messages, **kwargs
+    async def chat(self, messages: list[dict[str, str]], model: str | None = None, **kwargs) -> str:
+        if self._extra_body is not None:
+            kwargs.setdefault("extra_body", self._extra_body)
+        resp = await self._client.chat.completions.create(
+            model=model or self.model,
+            messages=cast(Iterable[ChatCompletionMessageParam], messages),
+            **kwargs,
         )
-        return resp.choices[0].message.content
+        content = resp.choices[0].message.content
+        if content is None:
+            raise LLMOutputError("LLM 返回空 content")
+        return content
 
     async def chat_json(self, messages: list[dict], model: str | None = None, **kwargs) -> str:
-        """调用 LLM 并确保返回纯 JSON 字符串。先尝试 response_format，失败则清洗。"""
-        kwargs.setdefault("extra_body", {"thinking": {"type": "disabled"}})
-        kwargs.setdefault("response_format", {"type": "json_object"})
-        resp = await self.client.chat.completions.create(
-            model=model or self.model, messages=messages, **kwargs
-        )
-        raw = resp.choices[0].message.content.strip()
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-            raw = raw.strip()
-        return raw
+        """请求 JSON 输出。对端不支持 response_format 时降级为普通请求 + 去除 markdown 围栏。"""
+        try:
+            raw = await self.chat(messages, model=model, response_format={"type": "json_object"}, **kwargs)
+        except BadRequestError as e:
+            logger.warning("json_mode_unsupported_fallback", error=str(e)[:120])
+            raw = await self.chat(messages, model=model, **kwargs)
+        return _strip_code_fence(raw)
+
+    async def chat_validated(
+        self,
+        messages: list[dict],
+        schema: type[T],
+        model: str | None = None,
+        max_repairs: int = 1,
+        **kwargs,
+    ) -> T:
+        """调 LLM 并把输出校验为 schema 实例。校验失败时把错误信息回喂给模型修复，最多 max_repairs 次。"""
+        last_error: Exception | None = None
+        for attempt in range(max_repairs + 1):
+            raw = await self.chat_json(messages, model=model, **kwargs)
+            try:
+                return schema.model_validate_json(raw)
+            except (ValidationError, ValueError) as e:
+                last_error = e
+                logger.warning(
+                    "llm_output_invalid",
+                    schema=schema.__name__,
+                    attempt=attempt,
+                    error=str(e)[:200],
+                )
+                messages = [
+                    *messages,
+                    {"role": "assistant", "content": raw},
+                    {"role": "user", "content": f"上次输出未通过 JSON Schema 校验：{e}\n请仅输出修正后的合法 JSON。"},
+                ]
+        raise LLMOutputError(f"{schema.__name__} 校验失败（已修复重试 {max_repairs} 次）: {last_error}")
 
 
-provider = LLMProvider()
-
-
-def resolve_model(env_name: str) -> str | None:
-    """读取环境变量指定的模型名。未设置返回 None，则使用全局 LLM_MODEL。"""
-    return os.getenv(env_name) or None
+def _strip_code_fence(raw: str) -> str:
+    text = raw.strip()
+    if text.startswith("```"):
+        text = text.split("```", 2)[1]
+        if text.startswith("json"):
+            text = text[4:]
+        text = text.strip()
+    return text

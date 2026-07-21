@@ -1,70 +1,52 @@
-"""StateGraph 装配入口。编译一次，运行时复用。
+"""StateGraph 装配入口（组合根的一部分）。
 
-Phase 1: 线性流（diagnose → retrieve → generate → review → END）
-Phase 2: 加条件路由（review 根据审核结果 → pass/deliver 或 retry/generate, ≤3 轮）"""
+依赖显式注入：provider / retriever / settings 由调用方构造传入，本模块无任何全局状态。
+编译产物的缓存复用由调用方负责（FastAPI 生命周期或 CLI 单例），不在此处藏全局单例。
+
+Phase 1: 线性流 diagnose → retrieve → generate → review → END
+Phase 2: review 后接条件路由（pass → deliver / retry → generate / 超 3 轮 → 降级重组）
+"""
+
+import asyncio
+from functools import partial
 
 import structlog
-from langgraph.graph import StateGraph, START, END
-from core.state import AgentState
+from langgraph.graph import END, START, StateGraph
+
 from core.agents import diagnose_node, generate_node, review_node
-from core.retrieval import hybrid_search
+from core.config import Settings
+from core.llm import LLMProvider
+from core.retrieval import Retriever
+from core.state import AgentState
 
 logger = structlog.get_logger()
 
 
-async def retrieve_node(state: AgentState) -> dict:
+async def retrieve_node(
+    state: AgentState, *, retriever: Retriever, top_k: int
+) -> dict:
+    """同步检索内核（sqlite + CPU 密集 encode）放到工作线程，避免冻结事件循环。"""
     gaps = state.get("gaps", [])
-    seen: set[str] = set()
-    entries: list[dict] = []
-    for query in gaps:
-        for r in hybrid_search(query, top_k=3):
-            if r["id"] not in seen:
-                seen.add(r["id"])
-                entries.append(r)
-    logger.info("retrieve_done", queries=len(gaps), entries=len(entries))
-    return {"retrieved_entries": entries}
+    result = await asyncio.to_thread(retriever.search_gaps, gaps, top_k)
+    return {
+        "retrieved_entries": result.entries,
+        "uncovered_gaps": result.uncovered_gaps,
+    }
 
 
-# Phase 2 路由函数（当前未使用，Phase 2 接入）
-# def route_after_review(state: AgentState) -> str:
-#     review_history = state.get("review_history", [])
-#     has_unsupported = any(r["verdict"] == "unsupported" for r in review_history)
-#     round_num = state.get("review_round", 0)
-#     if not has_unsupported:
-#         return "deliver"
-#     if round_num >= 3:
-#         return "degrade"
-#     return "retry"
-
-
-_graph = None
-
-
-def build_graph():
-    global _graph
-    if _graph is not None:
-        return _graph
-
+def build_graph(settings: Settings, provider: LLMProvider, retriever: Retriever):
     g = StateGraph(AgentState)
-    g.add_node("diagnose", diagnose_node)
-    g.add_node("retrieve", retrieve_node)
-    g.add_node("generate", generate_node)
-    g.add_node("review", review_node)
+    g.add_node("diagnose", partial(diagnose_node, provider=provider, model=settings.diagnose_model))
+    g.add_node("retrieve", partial(retrieve_node, retriever=retriever, top_k=settings.retrieval_top_k))
+    g.add_node("generate", partial(generate_node, provider=provider, model=settings.generate_model))
+    g.add_node("review", partial(review_node, provider=provider, model=settings.review_model))
 
-    # Phase 1 线性流
     g.add_edge(START, "diagnose")
     g.add_edge("diagnose", "retrieve")
     g.add_edge("retrieve", "generate")
     g.add_edge("generate", "review")
     g.add_edge("review", END)
 
-    # Phase 2 替换为条件路由：
-    # g.add_conditional_edges("review", route_after_review, {
-    #     "deliver": END,
-    #     "retry": "generate",
-    #     "degrade": END,
-    # })
-
-    _graph = g.compile()
+    compiled = g.compile()
     logger.info("graph_compiled", nodes=["diagnose", "retrieve", "generate", "review"])
-    return _graph
+    return compiled

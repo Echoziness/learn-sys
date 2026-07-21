@@ -1,24 +1,28 @@
 """审核裁判 Agent。仅访问 draft 和 cited_entries，不接触 learner_profile。
 
-架构强制隔离：review_node 是 graph 入口（接收完整 state 但只提取指定字段），
-_review_inner 是实际审核逻辑（函数签名里根本没有画像字段，编译器也拿不到）。"""
+架构强制隔离：review_node 从 state 只提取这两个字段，审核逻辑签名里没有画像字段。
+每条论断保证恰好一条最终裁决（规则层优先、NLI 补充、漏判 fail-closed 记 unsupported），
+使幻觉率等指标的分母恒等于论断总数，口径可复算。
+"""
 
 import json
+
 import structlog
-from core.llm import provider, resolve_model
+
+from core.llm import LLMProvider
+from core.state import AgentState, DraftClaim, RetrievedEntry, ReviewNote, ReviewOutput
 
 logger = structlog.get_logger()
 
 REVIEW_PROMPT = """你是知识审核裁判。你的任务是逐条判断：给定论断是否被其引用的知识条目原文所支持。
 
-不需要考虑学习者的背景，不需要评价论断的教学质量——只判断两个问题：
-1. 论断引用的 evidence_ids 是否存在于被引用条目列表中。
-2. 如果存在，条目的原文是否真正支持该论断。
+不需要考虑学习者的背景，不需要评价论断的教学质量——只判断一个问题：
+论断引用的 evidence_ids 对应条目的原文，是否真正支持该论断。
 
 对每条论断给出裁决：
 - supported：条目原文明确支持该论断，关键事实吻合
 - partially_supported：条目原文部分支持，但论断有过度推断或添加了没有依据的细节
-- unsupported：引用条目不存在，或条目原文不支持/矛盾于该论断
+- unsupported：条目原文不支持或矛盾于该论断
 
 被引用条目列表（id → content）：
 {cited_entries_map}
@@ -26,44 +30,95 @@ REVIEW_PROMPT = """你是知识审核裁判。你的任务是逐条判断：给�
 待审核的论断列表：
 {draft}
 
-严格按以下 JSON 格式输出：
-{{"reviews": [{{"claim_index": 1, "verdict": "supported", "reason": "判断理由"}}, ...]}}
+严格按以下 JSON 格式输出（claim_index 必须与输入一一对应）：
+{{"reviews": [{{"claim_index": 1, "verdict": "supported", "reason": "判断理由", "suggestion": "若不通过，给出修改建议"}}, ...]}}
 """
 
 
-async def _review_inner(draft: list[dict], cited_entries: list[dict], current_round: int) -> dict:
-    """实际审核逻辑——函数签名中没有 learner_profile 等字段，架构强制隔离。"""
-    valid_ids = {e["id"]: e["content"] for e in cited_entries}
-    rule_issues = []
+def rule_check(
+    draft: list[DraftClaim], cited_entries: list[RetrievedEntry]
+) -> tuple[list[ReviewNote], set[int]]:
+    """规则层：引用不存在的条目 → 直接裁 unsupported，不再送 NLI（避免双重计数）。"""
+    valid_ids = {e.id for e in cited_entries}
+    notes: list[ReviewNote] = []
+    flagged: set[int] = set()
     for claim in draft:
-        for eid in claim.get("evidence_ids", []):
-            if eid not in valid_ids:
-                rule_issues.append({
-                    "claim_index": claim.get("claim_index"),
-                    "verdict": "unsupported",
-                    "reason": f"引用的条目 {eid} 不在已检索条目中"
-                })
-
-    cited_map = json.dumps({e["id"]: e["content"][:500] for e in cited_entries}, ensure_ascii=False)
-    draft_text = json.dumps(draft, ensure_ascii=False)
-    messages = [{"role": "user", "content": REVIEW_PROMPT.format(
-        cited_entries_map=cited_map, draft=draft_text
-    )}]
-
-    raw = await provider.chat_json(messages, model=resolve_model("REVIEW_MODEL"))
-    result = json.loads(raw)
-    nli_reviews = result.get("reviews", [])
-    reviews = rule_issues + nli_reviews
-    unsupported = [r for r in reviews if r["verdict"] == "unsupported"]
-
-    logger.info("review_done", total=len(reviews), unsupported_count=len(unsupported))
-    return {"review_history": reviews, "review_round": current_round + 1}
+        missing = [eid for eid in claim.evidence_ids if eid not in valid_ids]
+        if missing:
+            flagged.add(claim.claim_index)
+            notes.append(
+                ReviewNote(
+                    claim_index=claim.claim_index,
+                    verdict="unsupported",
+                    reason=f"引用的条目 {missing} 不在已检索条目中",
+                    suggestion="移除无效引用，仅引用已检索到的条目",
+                )
+            )
+    return notes, flagged
 
 
-async def review_node(state: dict) -> dict:
-    """Graph 节点入口：只从 state 提取 draft 和 cited_entries，其余字段不传入审核逻辑。"""
-    return await _review_inner(
-        draft=state.get("draft", []),
-        cited_entries=state.get("cited_entries", []),
-        current_round=state.get("review_round", 0),
-    )
+def merge_verdicts(
+    draft: list[DraftClaim],
+    rule_notes: list[ReviewNote],
+    nli_notes: list[ReviewNote],
+) -> list[ReviewNote]:
+    """合并两层裁决：规则层优先；NLI 编造/遗漏 claim_index 显式处理；每条论断恰好一条裁决。"""
+    rule_by_index = {n.claim_index: n for n in rule_notes}
+    expected = {c.claim_index for c in draft} - set(rule_by_index)
+    merged: dict[int, ReviewNote] = dict(rule_by_index)
+
+    for note in nli_notes:
+        if note.claim_index not in expected:
+            logger.warning("review_index_out_of_scope", claim_index=note.claim_index)
+            continue
+        merged[note.claim_index] = note
+
+    missing = expected - set(merged)
+    for idx in sorted(missing):
+        logger.warning("review_missing_verdict_failsafe", claim_index=idx)
+        merged[idx] = ReviewNote(
+            claim_index=idx,
+            verdict="unsupported",
+            reason="审核未覆盖该论断，按 fail-closed 原则记为不支持",
+            suggestion="重新生成该论断并确保引用条目原文",
+        )
+    return [merged[i] for i in sorted(merged)]
+
+
+def build_feedback(notes: list[ReviewNote]) -> str:
+    """生成 Agent 下一轮的唯一反馈通道：结构化打回意见（哪条论断、什么问题、建议动作）。"""
+    issues = [n for n in notes if n.verdict != "supported"]
+    if not issues:
+        return ""
+    return json.dumps([n.model_dump() for n in issues], ensure_ascii=False, indent=2)
+
+
+async def review_node(
+    state: AgentState, *, provider: LLMProvider, model: str | None = None
+) -> dict:
+    draft = state.get("draft", [])
+    cited_entries = state.get("cited_entries", [])
+
+    rule_notes, flagged = rule_check(draft, cited_entries)
+    pending = [c for c in draft if c.claim_index not in flagged]
+
+    nli_notes: list[ReviewNote] = []
+    if pending:
+        cited_map = json.dumps({e.id: e.content for e in cited_entries}, ensure_ascii=False)
+        draft_text = json.dumps([c.model_dump() for c in pending], ensure_ascii=False)
+        output = await provider.chat_validated(
+            [{"role": "user", "content": REVIEW_PROMPT.format(cited_entries_map=cited_map, draft=draft_text)}],
+            schema=ReviewOutput,
+            model=model,
+        )
+        nli_notes = output.reviews
+
+    notes = merge_verdicts(draft, rule_notes, nli_notes)
+    unsupported = [n for n in notes if n.verdict == "unsupported"]
+    logger.info("review_done", total=len(notes), unsupported_count=len(unsupported))
+
+    return {
+        "review_history": notes,
+        "review_round": state.get("review_round", 0) + 1,
+        "last_review_feedback": build_feedback(notes),
+    }
