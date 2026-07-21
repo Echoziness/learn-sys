@@ -1,0 +1,30 @@
+[project]
+name = "learn-sys"
+version = "0.1.0"
+description = "领域知识个性化生成与多智能体协同决策系统"
+requires-python = ">=3.12"
+dependencies = [
+    "langgraph>=1.0",
+    "openai>=1.0",
+    "pydantic>=2.0",
+    "structlog>=24.0",
+    "sentence-transformers>=3.0",
+    "sqlite-vec>=0.1",
+    "python-dotenv>=1.0",
+    "torch>=2.0",
+]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "pyright>=1.1",
+]

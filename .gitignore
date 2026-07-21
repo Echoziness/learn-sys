@@ -30,3 +30,5 @@ Thumbs.db
 # Temp
 tmp/
 *.log
+deepseek_apikey.txt
+data/bge-m3/
