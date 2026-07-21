@@ -17,7 +17,14 @@ dist/
 
 # Environment
 .env
-.env.*
+.env.local
+.env.production
+
+# API keys
+*_apikey.txt
+
+# Embedding 模型缓存
+data/bge-m3/
 
 # IDE
 .vscode/
@@ -26,9 +33,9 @@ dist/
 # OS
 .DS_Store
 Thumbs.db
+*.swp
+*.swo
 
 # Temp
 tmp/
 *.log
-deepseek_apikey.txt
-data/bge-m3/
