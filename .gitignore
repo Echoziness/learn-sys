@@ -26,6 +26,9 @@ dist/
 # Embedding 模型缓存
 data/bge-m3/
 
+# CLI 开发测试产物（正式示例待 Phase 6 评测后生成）
+data/output_sample.json
+
 # IDE
 .vscode/
 .idea/
