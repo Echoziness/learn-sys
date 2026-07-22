@@ -80,9 +80,9 @@ diagnose → plan → retrieve → generate → review → deliver/retry → ass
 
 | Agent | 可读 state key | 可写 state key |
 |---|---|---|
-| diagnose | `learner_profile`, `test_results` | `gaps`, `profile_summary` |
-| retrieve | `gaps` | `retrieved_entries`, `uncovered_gaps` |
-| generate | `retrieved_entries`, `profile_summary`, `outline`, `last_review_feedback`, `uncovered_gaps` | `draft`, `cited_entries` |
+| diagnose | `learner_profile`, `test_results` | `gaps`, `profile_summary`, `difficulty_level` |
+| retrieve | `gaps`, `difficulty_level` | `retrieved_entries`, `uncovered_gaps` |
+| generate | `retrieved_entries`, `profile_summary`, `outline`, `last_review_feedback`, `uncovered_gaps`, `difficulty_level` | `draft`, `cited_entries` |
 | review | `draft`, `cited_entries`, `review_round` | `review_history`(append), `review_round`, `last_review_feedback` |
 
 每个节点只读写表内 key，越界即 code review 驳回。隔离红线：review 禁止任何画像字段（含 `profile_summary`）；generate 只读 `profile_summary` 摘要，禁止 `learner_profile` 原始模型；对话日志永不进生成上下文。
