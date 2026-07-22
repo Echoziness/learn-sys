@@ -21,13 +21,17 @@ from core.state import AgentState
 
 logger = structlog.get_logger()
 
+# 难度闸门：初学者只看到难度 1-2 的条目，中级 1-3，高级无限制
+DIFFICULTY_CAP: dict[str, int] = {"beginner": 2, "intermediate": 3, "advanced": 5}
+
 
 async def retrieve_node(
     state: AgentState, *, retriever: Retriever, top_k: int
 ) -> dict:
-    """同步检索内核（sqlite + CPU 密集 encode）放到工作线程，避免冻结事件循环。"""
     gaps = state.get("gaps", [])
-    result = await asyncio.to_thread(retriever.search_gaps, gaps, top_k)
+    level = state.get("difficulty_level", "beginner")
+    cap = DIFFICULTY_CAP.get(level, 2)
+    result = await asyncio.to_thread(retriever.search_gaps, gaps, top_k, max_difficulty=cap)
     return {
         "retrieved_entries": result.entries,
         "uncovered_gaps": result.uncovered_gaps,

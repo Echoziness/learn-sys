@@ -43,6 +43,7 @@ class ReviewNote(BaseModel):
 class DiagnoseOutput(BaseModel):
     gaps: list[str]
     profile_summary: str
+    difficulty_level: Literal["beginner", "intermediate", "advanced"]
 
 
 class GenerateOutput(BaseModel):
@@ -61,6 +62,7 @@ class AgentState(TypedDict, total=False):
     # diagnose
     profile_summary: str
     gaps: list[str]
+    difficulty_level: str  # beginner / intermediate / advanced——检索难度闸门 + 生成提示强度
 
     # retrieve
     retrieved_entries: list[RetrievedEntry]

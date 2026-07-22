@@ -75,27 +75,31 @@ class Retriever:
         sqlite_vec.load(db)
         return db
 
-    def keyword_search(self, query: str, limit: int = 10) -> list[RetrievedEntry]:
+    def keyword_search(self, query: str, limit: int = 10, max_difficulty: int | None = None) -> list[RetrievedEntry]:
         fts_query = sanitize_fts_query(query)
         if not fts_query:
             return []
         with closing(self._connect()) as db:
+            where = "AND k.difficulty <= ?" if max_difficulty is not None else ""
             rows = db.execute(
-                """SELECT f.entry_id, f.rank, k.title, k.content
+                f"""SELECT f.entry_id, f.rank, k.title, k.content
                    FROM knowledge_fts f JOIN knowledge_entries k ON k.id = f.entry_id
-                   WHERE knowledge_fts MATCH ? ORDER BY f.rank LIMIT ?""",
-                (fts_query, limit),
+                   WHERE knowledge_fts MATCH ? {where} ORDER BY f.rank LIMIT ?""",
+                (fts_query, *((max_difficulty,) if max_difficulty is not None else ()), limit),
             ).fetchall()
         return [RetrievedEntry(id=r[0], title=r[2], content=r[3], score=-r[1]) for r in rows]
 
-    def vec_search(self, query: str, limit: int = 10) -> list[RetrievedEntry]:
+    def vec_search(self, query: str, limit: int = 10, max_difficulty: int | None = None) -> list[RetrievedEntry]:
         qvec = self._encoder.encode(query, normalize_embeddings=True)
         with closing(self._connect()) as db:
+            where = "AND k.difficulty <= ?" if max_difficulty is not None else ""
             rows = db.execute(
-                """SELECT k.id, k.title, k.content, vec_distance_cosine(v.embedding, ?) AS dist
+                f"""SELECT k.id, k.title, k.content, vec_distance_cosine(v.embedding, ?) AS dist
                    FROM knowledge_vec v JOIN knowledge_entries k ON k.rowid = v.rowid
+                   WHERE 1=1 {where}
                    ORDER BY dist LIMIT ?""",
-                (struct.pack(f"{self._vec_dim}f", *qvec), limit),
+                (struct.pack(f"{self._vec_dim}f", *qvec),
+                 *((max_difficulty,) if max_difficulty is not None else ()), limit),
             ).fetchall()
         return [RetrievedEntry(id=r[0], title=r[1], content=r[2], score=1.0 - r[3]) for r in rows]
 
@@ -117,22 +121,22 @@ class Retriever:
         fused.sort(key=lambda x: x.score, reverse=True)
         return fused
 
-    def hybrid_search(self, query: str, top_k: int = 5) -> list[RetrievedEntry]:
-        kw = self.keyword_search(query, limit=top_k * 2)
-        vec = self.vec_search(query, limit=top_k * 2)
+    def hybrid_search(self, query: str, top_k: int = 5, max_difficulty: int | None = None) -> list[RetrievedEntry]:
+        kw = self.keyword_search(query, limit=top_k * 2, max_difficulty=max_difficulty)
+        vec = self.vec_search(query, limit=top_k * 2, max_difficulty=max_difficulty)
         fused = self.reciprocal_rank_fusion(kw, vec)[:top_k]
         logger.info("hybrid_search", query=query, kw_count=len(kw), vec_count=len(vec), result_count=len(fused))
         return fused
 
-    def search_gaps(self, gaps: list[str], top_k: int = 5) -> GapSearchResult:
-        """按盲区逐条检索并判定覆盖度：FTS 无命中且向量最高分低于阈值 → 知识库未覆盖。
-        覆盖判定是防幻觉生产约束的一部分：未覆盖盲区必须显式拒答而非编造。"""
+    def search_gaps(self, gaps: list[str], top_k: int = 5, max_difficulty: int | None = None) -> GapSearchResult:
+        """按盲区逐条检索并判定覆盖度。max_difficulty 为可选的难度闸门。
+        FTS 无命中且向量最高分低于阈值 → 知识库未覆盖。"""
         seen: set[str] = set()
         entries: list[RetrievedEntry] = []
         uncovered: list[str] = []
         for gap in gaps:
-            kw = self.keyword_search(gap, limit=top_k * 2)
-            vec = self.vec_search(gap, limit=top_k * 2)
+            kw = self.keyword_search(gap, limit=top_k * 2, max_difficulty=max_difficulty)
+            vec = self.vec_search(gap, limit=top_k * 2, max_difficulty=max_difficulty)
             best_vec = vec[0].score if vec else 0.0
             if not kw and best_vec < self._coverage_min_score:
                 uncovered.append(gap)
@@ -142,5 +146,6 @@ class Retriever:
                 if e.id not in seen:
                     seen.add(e.id)
                     entries.append(e)
-        logger.info("retrieve_done", queries=len(gaps), entries=len(entries), uncovered=len(uncovered))
+        logger.info("retrieve_done", queries=len(gaps), entries=len(entries), uncovered=len(uncovered),
+                    max_difficulty=max_difficulty)
         return GapSearchResult(entries=entries, uncovered_gaps=uncovered)
