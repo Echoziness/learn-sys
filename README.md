@@ -54,7 +54,7 @@ docker compose up --build
 
 ## 文档
 
-- [`docs/需求规格说明书.md`](docs/需求规格说明书.md) — 需求 SSOT：赛题条款 → 需求 ID → 验收标准追溯矩阵
+- [`docs/产品需求文档.md`](docs/产品需求文档.md) — PRD v2.0：产品愿景、交互模型、Agent 体系、演示分镜、需求追溯
 - [`docs/技术选型与架构决策.md`](docs/技术选型与架构决策.md) — 每个选型的证据与否决记录
 - [`docs/开发约束与工程规范.md`](docs/开发约束与工程规范.md) — 强制开发规范（code review 标准）
 - [`docs/开发计划与进度.md`](docs/开发计划与进度.md) — 每周档期与验收（唯一排期事实源）
