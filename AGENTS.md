@@ -76,7 +76,7 @@ diagnose → plan → retrieve → generate → review → deliver/retry → ass
 
 ### 3.5 Agent 上下文（state 注入规范）
 
-唯一事实源为 `docs/产品需求文档.md` §5.3（含未来节点）。当前已上线节点：
+唯一事实源为 `docs/产品需求文档.md` §4（含未来节点）。当前已上线节点：
 
 | Agent | 可读 state key | 可写 state key |
 |---|---|---|

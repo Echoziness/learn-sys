@@ -54,8 +54,8 @@ docker compose up --build
 
 ## 文档
 
-- [`docs/产品需求文档.md`](docs/产品需求文档.md) — PRD v2.0：产品愿景、交互模型、Agent 体系、演示分镜、需求追溯
-- [`docs/技术选型与架构决策.md`](docs/技术选型与架构决策.md) — 每个选型的证据与否决记录
+- [`docs/产品需求文档.md`](docs/产品需求文档.md) — PRD：产品愿景、交互模型、Agent 职责
+- [`docs/技术选型记录.md`](docs/技术选型记录.md) — ADR：每一项技术选型的证据与否决理由
 - [`docs/开发约束与工程规范.md`](docs/开发约束与工程规范.md) — 强制开发规范（code review 标准）
-- [`docs/开发计划与进度.md`](docs/开发计划与进度.md) — 每周档期与验收（唯一排期事实源）
+- [`docs/术语表.md`](docs/术语表.md) — 跨文档命名一致性
 - [`AGENTS.md`](AGENTS.md) — AI agent 开发边界
