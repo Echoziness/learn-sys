@@ -4,8 +4,14 @@
 可追溯），LLM 只负责把错因翻译成教学语言（在 feedback 节点接线，本模块不给
 LLM 留任何裁决权）。
 
-题型随知识类型扩展（当前条目无 knowledge_type 字段，第一版统一复述题；
-字段上线后按类型切分题型，见 build_question 的 TODO）。
+题型（2026-08-11 简化）：简答题 + 选择题两种，通用题型，与知识类型解耦——
+knowledge_type 描述知识本体（影响教学方式/门槛/复习节奏），题型是评估手段。
+出题由掌握度驱动（对齐 PRD 掌握度阶梯）：
+- 掌握度低（< CHOICE_MASTERY_THRESHOLD）→ 选择题（识别式，脚手架）；
+- 掌握度高 → 简答题（回忆/组织语言，苏格拉底式）。
+
+TODO(operation)：真实操作题（SQLite 沙箱执行 SQL/pandas）因难度搁置，
+未来在 procedure 条目上按此思路扩展。
 """
 
 from __future__ import annotations
@@ -15,6 +21,12 @@ from dataclasses import dataclass
 from functools import lru_cache
 
 from core.plan import KnowledgeEntry
+
+# 选择题固定 4 选项；干扰项不足时允许少于 4（fail-closed：判分只认标签）。
+NUM_CHOICE_OPTIONS = 4
+
+# 掌握度低于此值出选择题（脚手架），达到后出简答题。对齐 PRD 阶梯：0.2-0.5 选择、0.5-0.7 问答。
+CHOICE_MASTERY_THRESHOLD = 0.5
 
 
 @dataclass(frozen=True)
@@ -28,34 +40,76 @@ class Question:
     question_id: str
     entry_id: str
     prompt: str
-    question_type: str  # "recall" 复述题（第一版统一题型）
+    question_type: str  # "choice" | "answer"
     expected_keywords: tuple[str, ...]
+    options: tuple[str, ...] = ()  # choice 题：完整选项文本（带标签，如 "A. ..."）
+    expected_label: str = ""  # choice 题：正确选项标签（"A"/"B"/...）
 
 
 @dataclass(frozen=True)
 class GradeResult:
     is_correct: bool
-    matched: tuple[str, ...]  # 学生作答中命中的关键词
-    missing: tuple[str, ...]  # 应覆盖但未命中的关键词
+    matched: tuple[str, ...]  # 学生作答中命中的关键词（choice 题为空）
+    missing: tuple[str, ...]  # 应覆盖但未命中的关键词（choice 题为空）
     keyword_coverage: float
+    correct_label: str = ""  # choice 题：正确选项标签，供反馈使用
 
 
-def build_question(entry: KnowledgeEntry) -> Question:
-    """从条目生成复述题。题干直接使用条目主题，expected 取条目关键词。
+def build_question(
+    entry: KnowledgeEntry,
+    *,
+    distractors: list[KnowledgeEntry] | None = None,
+    mastery: float = 0.0,
+) -> Question:
+    """按掌握度分发题型：低掌握度选择题（脚手架），高掌握度回答题。"""
+    qid = f"q_{entry.id}"
+    if mastery < CHOICE_MASTERY_THRESHOLD:
+        return _build_choice(qid, entry, distractors or [])
+    return _build_answer(qid, entry)
 
-    TODO(knowledge_type)：条目 schema 增加类型后，memory → 选择题、
-    procedure → 操作题、concept → 复述题；本函数按类型分发。
-    """
+
+def _build_answer(qid: str, entry: KnowledgeEntry) -> Question:
     keywords = tuple(entry.keywords[:6])
     return Question(
-        question_id=f"q_{entry.id}",
+        question_id=qid,
         entry_id=entry.id,
         prompt=(
             f"请用自己的话解释：「{entry.title}」。"
             f"作答中尽量覆盖以下要点：{('、'.join(keywords)) or '（无）'}"
         ),
-        question_type="recall",
+        question_type="answer",
         expected_keywords=keywords,
+    )
+
+
+def _build_choice(
+    qid: str, entry: KnowledgeEntry, distractors: list[KnowledgeEntry]
+) -> Question:
+    """选择题：正确项 = 本条目关键词集；干扰项 = 其他条目关键词集（去重、取前 3）。"""
+    keywords = tuple(entry.keywords[:6])
+    correct_text = "、".join(keywords)
+    distractors_text: list[str] = []
+    seen: set[str] = set()
+    for other in distractors:
+        text = "、".join(other.keywords[:6])
+        if not text or text == correct_text or text in seen:
+            continue
+        seen.add(text)
+        distractors_text.append(text)
+        if len(distractors_text) >= NUM_CHOICE_OPTIONS - 1:
+            break
+
+    labels = "ABCD"
+    texts = [correct_text, *distractors_text]
+    options = tuple(f"{labels[i]}. {t}" for i, t in enumerate(texts))
+    return Question(
+        question_id=qid,
+        entry_id=entry.id,
+        prompt=f"以下哪组要点属于「{entry.title}」的核心内容？",
+        question_type="choice",
+        expected_keywords=(),
+        options=options,
+        expected_label=labels[0],
     )
 
 
@@ -75,17 +129,37 @@ def _tokens(text: str) -> tuple[str, ...]:
 
 
 def grade_answer(question: Question, answer: str, *, min_coverage: float = 0.6) -> GradeResult:
-    """关键词覆盖率判分。fail-closed：无 expected 关键词或无作答 → 判错。
+    """按题型判分。fail-closed：无 expected 或无作答 → 判错，绝不判对。
 
-    覆盖率 = 命中关键词数 / expected 关键词数。一个关键词的所有字符全部
-    出现在作答中即算命中（CJK 逐字），拉丁词按整词命中。
+    - choice：作答与正确标签精确匹配（容忍大小写与空白）；
+    - answer：关键词覆盖率 ≥ min_coverage。
     """
-    if not answer.strip() or not question.expected_keywords:
+    if not answer.strip():
         return GradeResult(
             is_correct=False,
             matched=(),
             missing=question.expected_keywords,
             keyword_coverage=0.0,
+            correct_label=question.expected_label,
+        )
+
+    if question.question_type == "choice":
+        is_correct = answer.strip().upper() == question.expected_label
+        return GradeResult(
+            is_correct=is_correct,
+            matched=(),
+            missing=(),
+            keyword_coverage=1.0 if is_correct else 0.0,
+            correct_label=question.expected_label,
+        )
+
+    if not question.expected_keywords:
+        return GradeResult(
+            is_correct=False,
+            matched=(),
+            missing=(),
+            keyword_coverage=0.0,
+            correct_label=question.expected_label,
         )
 
     answer_tokens = set(_tokens(answer))
@@ -106,17 +180,33 @@ def grade_answer(question: Question, answer: str, *, min_coverage: float = 0.6) 
         matched=tuple(matched),
         missing=missing,
         keyword_coverage=coverage,
+        correct_label=question.expected_label,
     )
 
 
-def build_feedback_message(grade: GradeResult) -> str:
+def build_feedback_message(grade: GradeResult, question: Question | None = None) -> str:
     """确定性错因反馈：缺什么要点直接点名。LLM 辅助的"教学话术"由 feedback
     节点在此消息基础上扩展，本函数不调模型、不给裁决。"""
     if grade.is_correct:
+        if question is not None and question.question_type == "choice":
+            return f"回答正确（{grade.correct_label}）。"
         return f"回答正确，覆盖了要点：{'、'.join(grade.matched)}。"
+    if question is not None and question.question_type == "choice":
+        correct_text = next(
+            (o for o in question.options if o.startswith(grade.correct_label + ".")), ""
+        )
+        if correct_text:
+            return f"回答错误。正确答案是 {correct_text}。"
+        return "回答错误。"
     if not grade.missing:
         return "回答未能判为正确，请结合要点重新作答。"
     return f"回答还不够完整，缺少以下要点：{'、'.join(grade.missing)}。请对照重新作答。"
 
 
-__all__ = ["Question", "GradeResult", "build_question", "grade_answer", "build_feedback_message"]
+__all__ = [
+    "Question",
+    "GradeResult",
+    "build_question",
+    "grade_answer",
+    "build_feedback_message",
+]

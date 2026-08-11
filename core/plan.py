@@ -29,6 +29,9 @@ class KnowledgeEntry:
     difficulty: int = 1
     keywords: list[str] = field(default_factory=list)
     source: str = ""
+    # memory（事实/定义/术语）/ concept（概念与关系）/ procedure（步骤技能）。
+    # 决定 assess 题型分发；缺失时按 concept 处理（与 DB 默认一致）。
+    knowledge_type: str = "concept"
 
 
 @dataclass

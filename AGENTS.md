@@ -30,7 +30,7 @@ learn-sys/
 │   ├── graph.py             # build_teach_graph 教学子图（retrieve→generate→review）依赖注入装配
 │   ├── mastery.py           # 掌握度数学唯一事实源（纯函数：加权+置信度封顶+门槛+降维判定）
 │   ├── plan.py              # 课程切片（纯函数：gap匹配+前置链闭包+难度过滤+拓扑排序）+ KnowledgeEntry 模型
-│   ├── assess.py            # 确定性出题/判分（纯函数：复述题+关键词覆盖率，fail-closed）
+│   ├── assess.py            # 确定性出题/判分（纯函数：掌握度驱动题型——低掌握度选择题/高掌握度回答题，fail-closed）
 │   ├── llm.py               # LLMProvider（AsyncOpenAI，显式 180s 读取超时）+ chat_validated 校验重试
 │   ├── retrieval.py         # Retriever 类：FTS5(CJK逐字切分) + sqlite-vec + RRF + 覆盖度判定
 │   ├── embedding.py         # BGEEncoder（仅组合根 import，加载 ~2GB 模型）
@@ -105,7 +105,8 @@ diagnose（LLM 一次）→ plan（确定性切片：gap→条目匹配 + 前置
 - 所有 agent 间消息用 Pydantic BaseModel / TypedDict 定义；
 - 掌握度数学只在 `core/mastery.py`（纯函数：recency-weighted + 置信度封顶 + 门槛 0.7 + 连错 2 次降维），新增教学数值必须落在此处，禁止散落各节点；
 - 出题/判分只在 `core/assess.py`（fail-closed：无 expected 关键词即判错，绝不判对）；expected 永不进学生视野；
-- 知识条目必带 `knowledge_type`（`memory` 事实/定义/术语 / `concept` 概念与关系 / `procedure` 步骤技能，枚举在 `scripts/init_db.py.KnowledgeType`，DB 列 DEFAULT 'concept'），后续按类型切分题型，core/plan.KnowledgeEntry 不持此字段；
+- 题型仅两种且与知识类型解耦：choice（选择题，识别式）与 answer（回答题，回忆式），由掌握度驱动（<0.5 选择 / ≥0.5 回答，对齐 PRD 阶梯）；选择题干扰项从其他条目关键词确定性构造（不调 LLM），判分只认选项标签（贴全文不算对）；
+- 知识条目必带 `knowledge_type`（`memory` 事实/定义/术语 / `concept` 概念与关系 / `procedure` 步骤技能，枚举在 `scripts/init_db.py.KnowledgeType`，DB 列 DEFAULT 'concept'），描述知识本体（影响教学方式/门槛/复习节奏），不绑定题型，core/plan.KnowledgeEntry 同持此字段（默认 concept）；
 - 新增种子条目 content 控制在 50-100 字（代码片段算字符），且每个关键词去空格后的全部字符必须出现在 content 里（判分靠子串，`tests/test_seeds.py` 全量校验）；
 - DB schema 变更禁止删库重建：`scripts/init_db.py` 用幂等迁移（PRAGMA table_info 查列 → 缺则 `ALTER TABLE ADD COLUMN`），保留运行时数据与 rowid 对齐（FTS/vec 外部表依赖）。
 

@@ -64,7 +64,7 @@ def load_entries(db_path: str, domain: str = "bigdata-analysis") -> list[Knowled
     db = sqlite3.connect(db_path)
     try:
         rows = db.execute(
-            "SELECT id, title, content, prerequisites, difficulty, keywords, source "
+            "SELECT id, title, content, prerequisites, difficulty, keywords, source, knowledge_type "
             "FROM knowledge_entries WHERE domain=?",
             (domain,),
         ).fetchall()
@@ -79,6 +79,7 @@ def load_entries(db_path: str, domain: str = "bigdata-analysis") -> list[Knowled
             difficulty=r[4],
             keywords=json.loads(r[5] or "[]"),
             source=r[6] or "",
+            knowledge_type=r[7] or "concept",
         )
         for r in rows
     ]
@@ -91,6 +92,7 @@ def print_section(title: str) -> None:
 async def teach_topic(
     graph,
     topic: KnowledgeEntry,
+    entries: list[KnowledgeEntry],
     difficulty_level: str,
     sim_rate: float | None,
 ) -> tuple[list[bool], dict]:
@@ -123,10 +125,18 @@ async def teach_topic(
         else:
             print("\n[审核] 全部论断通过")
 
-        question = build_question(topic)
+        question = build_question(topic, distractors=entries, mastery=compute_mastery(correctness))
         print(f"\n[检验] {question.prompt}")
+        for opt in question.options:
+            print(f"  {opt}")
         if sim_rate is not None:
-            if random.random() < sim_rate:
+            if question.question_type == "choice":
+                if random.random() < sim_rate:
+                    answer = question.expected_label
+                else:
+                    wrong = [o[0] for o in question.options if not o.startswith(question.expected_label)]
+                    answer = random.choice(wrong) if wrong else "Z"
+            elif random.random() < sim_rate:
                 answer = "、".join(question.expected_keywords) + "。"
             else:
                 answer = "我还没完全学会，说不清楚。"
@@ -136,7 +146,7 @@ async def teach_topic(
         correctness.append(grade.is_correct)
         print(f"[反馈] {'✓ 正确' if grade.is_correct else '✗ 不完整'} "
               f"（覆盖率 {grade.keyword_coverage:.0%}）")
-        print(build_feedback_message(grade))
+        print(build_feedback_message(grade, question))
 
         decision, mastery = decide_next_step(correctness)
         logger.info(
@@ -217,7 +227,7 @@ async def main() -> None:
         entry = next(e for e in entries if e.id == topic.entry_id)
 
         correctness, final_state = await teach_topic(
-            teach_graph, entry, diag["difficulty_level"], args.sim
+            teach_graph, entry, entries, diag["difficulty_level"], args.sim
         )
         mastery_history[topic.entry_id].extend(correctness)
 
