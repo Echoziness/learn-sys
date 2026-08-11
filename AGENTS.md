@@ -1,6 +1,6 @@
 # learn-sys · AGENTS.md
 
-> 完整背景见 `docs/技术选型与架构决策.md` 和 `docs/开发约束与工程规范.md`。本文档是对 AI 开放的最小开发边界，不包含决策理由和反面案例——只描述正确做法。
+> 完整背景见 `docs/技术选型记录.md` 和 `docs/开发约束与工程规范.md`。本文档是对 AI 开放的最小开发边界，不包含决策理由和反面案例——只描述正确做法。
 
 ## 1. 技术栈
 
@@ -79,9 +79,10 @@ web/ ──(SSE)──→ api/ ──→ core/ ──→ data/
 ### 3.4 会话流（三层模型：本体静态 / 切片推导 / 执行动态）
 
 ```text
-diagnose（LLM 一次）→ plan（确定性切片：gap→条目匹配 + 前置链闭包 + 拓扑排序）
-  → 逐主题教学子图（retrieve → generate → review）
-  → assess（确定性出题）→ 学生作答 → feedback（判分 + 掌握度更新）
+diagnose（LLM 一次，输出 gap_ids）→ plan（确定性切片：ID 投影 + 前置链闭包 + 拓扑排序）
+  → 逐主题教学子图（retrieve[anchor 锚定] → generate → review）
+  → question/assess（出题：掌握度驱动题型，answer 题干由 LLM 生成）
+  → 学生作答 → answer_pipeline（规则判分 → LLM 复核/评估 → 掌握度更新）
   → 决策：advance（下一主题）/ retry（重教）/ regress（回前置主题降维）
 ```
 
@@ -94,9 +95,9 @@ diagnose（LLM 一次）→ plan（确定性切片：gap→条目匹配 + 前置
 
 | Agent | 可读 state key | 可写 state key |
 |---|---|---|
-| diagnose | `learner_profile`, `test_results` | `gaps`, `profile_summary`, `difficulty_level` |
-| retrieve | `gaps`, `difficulty_level` | `retrieved_entries`, `uncovered_gaps` |
-| generate | `retrieved_entries`, `profile_summary`, `outline`, `last_review_feedback`, `uncovered_gaps`, `difficulty_level` | `draft`, `cited_entries` |
+| diagnose | `learner_profile`, `test_results` | `gap_ids`（收敛到本体目录）, `gaps`, `profile_summary`, `difficulty_level` |
+| retrieve | `gaps`, `difficulty_level`, `anchor_entry` | `retrieved_entries`, `uncovered_gaps` |
+| generate | `retrieved_entries`, `anchor_entry`, `profile_summary`, `outline`, `last_review_feedback`, `uncovered_gaps`, `difficulty_level` | `draft`, `cited_entries` |
 | review | `draft`, `cited_entries`, `review_round` | `review_history`(append), `review_round`, `last_review_feedback` |
 | plan（纯函数） | —（不入 state，CLI 直接调用） | — |
 | assess（纯函数） | 条目（KnowledgeEntry）+ 当前掌握度 | 题目（按掌握度选题型） |
@@ -114,7 +115,7 @@ diagnose（LLM 一次）→ plan（确定性切片：gap→条目匹配 + 前置
 - 掌握度数学只在 `core/mastery.py`（纯函数：recency-weighted + 置信度封顶 + 门槛 0.7 + 连错 2 次降维），新增教学数值必须落在此处，禁止散落各节点；
 - 出题/判分只在 `core/assess.py`（fail-closed：无 expected 关键词即判错，绝不判对）；expected 永不进学生视野；
 - 题型仅两种且与知识类型解耦：choice（选择题，识别式）与 answer（回答题，回忆式），由掌握度驱动（<0.5 选择 / ≥0.5 回答，对齐 PRD 阶梯）；选择题干扰项从其他条目关键词确定性构造（不调 LLM），判分只认选项标签（贴全文不算对）；
-- answer 判分两级：规则预筛（覆盖率 <0.6 直接判错不调 LLM）→ 覆盖达标送 LLM 复核（`core/agents/feedback.py`，可识别关键词罗列/逻辑错误并输出教学评估）；LLM 失败回退规则，绝不判对；
+- answer 判分两级：规则预筛（覆盖率 <0.6 直接判错不调 LLM）→ 覆盖达标送 LLM 复核（`core/agents/feedback.py`，可识别关键词罗列/逻辑错误并输出教学评估）；LLM 失败回退规则时要求关键词全覆盖（coverage=1.0）才判对——低阈值只是复核存在时的预筛，不能单独放行；
 - 回答题题干与判分要点由 LLM 一起生成（`core/agents/question.py`，场景化提问，禁止问条目之外内容）；expected 服务端校验——字符必须全部出自条目 content（防 LLM 编造，`validate_expected_keywords` 纯函数可单测），校验失败回退条目 keywords；按 entry_id 缓存 (题干, expected) 对；
 - LLM 输出截断防护：`core/llm.py` 检查 finish_reason=length 显式抛 `LLMOutputError`（JSON 必然残缺，不做无意义重试）；
 - 知识条目必带 `knowledge_type`（`memory` 事实/定义/术语 / `concept` 概念与关系 / `procedure` 步骤技能，枚举在 `scripts/init_db.py.KnowledgeType`，DB 列 DEFAULT 'concept'），描述知识本体（影响教学方式/门槛/复习节奏），不绑定题型，core/plan.KnowledgeEntry 同持此字段（默认 concept）；
@@ -149,6 +150,7 @@ diagnose（LLM 一次）→ plan（确定性切片：gap→条目匹配 + 前置
 | 选择题输入 A 判错（用户实测） | 中文输入法全角字母（U+FF21）或粘贴带 BOM/零宽字符，`.upper()` 不归一化 | `assess._normalize_answer`：全角→半角 + 去零宽字符，choice 判分前归一化（含回归测试） |
 | 种子关键词判分失配（如 SQL-002~005 的 keyword "SQL"） | 写条目时只检查中文关键词，英文关键词字符（如 SQL 的 q）没进 content | 关键词去空格后全部字符必须出现在 content（英文词同样校验），`tests/test_seeds.py` 全量兜底 |
 | 旧库重跑 init_db 缺列崩 SQL（schema 变更后） | `CREATE TABLE IF NOT EXISTS` 不会给已存在表补列 | 幂等迁移：PRAGMA table_info 查列，缺则 `ALTER TABLE ADD COLUMN`（见 `init_db.migrate_knowledge_type`） |
+| 学生作答含孤立 surrogate 导致 feedback LLM 编码失败（utf-8 codec surrogates not allowed） | 粘贴文本带入 U+D800-DFFF，json 序列化/编码崩 | 双层防护：`scripts/cli_input._sanitize`（输入边界）+ `core/llm.LLMProvider._sanitize_text`（请求前纵深防御，API 返回侧同样可能带） |
 
 ## 7. 开发模式（AI 生成代码遵循以下流程）
 
