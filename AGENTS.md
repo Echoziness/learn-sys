@@ -42,7 +42,7 @@ learn-sys/
 │   ├── init_db.py           # 幂等知识库 loader（数据来自 data/seeds/，不内嵌数据）
 │   └── run_cli.py           # 会话 CLI：诊断→切片→逐主题教学→问答循环→降维
 ├── data/
-│   ├── seeds/<domain>/entries.jsonl  # 知识条目（一等数据文件，换目录即换领域）
+│   ├── seeds/<domain>/entries.jsonl  # 知识条目（一等数据文件，换目录即换领域；每条必带 knowledge_type）
 │   ├── seeds/profiles/*.json         # 学习者画像种子
 │   └── knowledge.db         # 业务 + FTS5 + vec（单文件，由 init_db 生成）
 ├── tests/                   # pytest，与 evals/metrics.py 同口径
@@ -104,7 +104,10 @@ diagnose（LLM 一次）→ plan（确定性切片：gap→条目匹配 + 前置
 - 审核 Agent 输出每条论断的裁决 = `supported | partially_supported | unsupported`（NLI 三分类）；
 - 所有 agent 间消息用 Pydantic BaseModel / TypedDict 定义；
 - 掌握度数学只在 `core/mastery.py`（纯函数：recency-weighted + 置信度封顶 + 门槛 0.7 + 连错 2 次降维），新增教学数值必须落在此处，禁止散落各节点；
-- 出题/判分只在 `core/assess.py`（fail-closed：无 expected 关键词即判错，绝不判对）；expected 永不进学生视野。
+- 出题/判分只在 `core/assess.py`（fail-closed：无 expected 关键词即判错，绝不判对）；expected 永不进学生视野；
+- 知识条目必带 `knowledge_type`（`memory` 事实/定义/术语 / `concept` 概念与关系 / `procedure` 步骤技能，枚举在 `scripts/init_db.py.KnowledgeType`，DB 列 DEFAULT 'concept'），后续按类型切分题型，core/plan.KnowledgeEntry 不持此字段；
+- 新增种子条目 content 控制在 50-100 字（代码片段算字符），且每个关键词去空格后的全部字符必须出现在 content 里（判分靠子串，`tests/test_seeds.py` 全量校验）；
+- DB schema 变更禁止删库重建：`scripts/init_db.py` 用幂等迁移（PRAGMA table_info 查列 → 缺则 `ALTER TABLE ADD COLUMN`），保留运行时数据与 rowid 对齐（FTS/vec 外部表依赖）。
 
 ## 4. 编码约定
 
@@ -131,6 +134,8 @@ diagnose（LLM 一次）→ plan（确定性切片：gap→条目匹配 + 前置
 | 模拟学生全错、永远降维 | sim 模式"答对"的答案是不含关键词的占位文本，被 `grade_answer` 判错 | 答对时给出"、".join(expected_keywords) 的答案 |
 | CJK 检索/匹配失配（"聚合查询"匹配不到） | 分词没在 CJK 字符间切分，中文短语成一个整词 | `plan._tokenize` / `assess._tokens` / `retrieval.segment_cjk` 三处必须同语义逐字切分 |
 | LLM 输出校验失败重试后仍抛错 | `chat_validated` 重试只喂错误信息，无修复提示 | 重试消息带 Pydantic 错误详情，仍失败显式抛 `LLMOutputError`，禁止静默降级 |
+| 种子关键词判分失配（如 SQL-002~005 的 keyword "SQL"） | 写条目时只检查中文关键词，英文关键词字符（如 SQL 的 q）没进 content | 关键词去空格后全部字符必须出现在 content（英文词同样校验），`tests/test_seeds.py` 全量兜底 |
+| 旧库重跑 init_db 缺列崩 SQL（schema 变更后） | `CREATE TABLE IF NOT EXISTS` 不会给已存在表补列 | 幂等迁移：PRAGMA table_info 查列，缺则 `ALTER TABLE ADD COLUMN`（见 `init_db.migrate_knowledge_type`） |
 
 ## 7. 开发模式（AI 生成代码遵循以下流程）
 

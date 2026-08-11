@@ -9,6 +9,7 @@ import json
 import sqlite3
 import struct
 from collections.abc import Callable
+from enum import StrEnum
 from pathlib import Path
 
 import sqlite_vec
@@ -24,6 +25,8 @@ SCHEMA = """
     CREATE TABLE IF NOT EXISTS knowledge_entries (
         id          TEXT PRIMARY KEY,
         domain      TEXT NOT NULL DEFAULT 'bigdata-analysis',
+        knowledge_type TEXT NOT NULL DEFAULT 'concept'
+                    CHECK(knowledge_type IN ('memory', 'concept', 'procedure')),
         title       TEXT NOT NULL,
         content     TEXT NOT NULL,
         prerequisites TEXT,          -- JSON array of entry IDs
@@ -108,8 +111,17 @@ SCHEMA = """
 """
 
 
+class KnowledgeType(StrEnum):
+    """知识条目类型——决定后续出题题型（memory→选择题 / concept→复述题 / procedure→操作题）。"""
+
+    memory = "memory"  # 事实/定义/术语
+    concept = "concept"  # 需理解的概念与关系
+    procedure = "procedure"  # 可操作的步骤技能
+
+
 class SeedEntry(BaseModel):
     id: str
+    knowledge_type: KnowledgeType = KnowledgeType.concept
     title: str
     content: str
     prerequisites: list[str] = Field(default_factory=list)
@@ -162,6 +174,19 @@ def ensure_schema(db: sqlite3.Connection, vec_dim: int) -> None:
     db.execute("DROP TABLE IF EXISTS knowledge_vec")
     # SCHEMA 注释含 JSON 示例花括号，只能用 replace 不能用 str.format
     db.executescript(SCHEMA.replace("{vec_dim}", str(vec_dim)))
+    migrate_knowledge_type(db)
+
+
+def migrate_knowledge_type(db: sqlite3.Connection) -> None:
+    """旧库（无 knowledge_type 列）幂等补列。选 ALTER TABLE 而非删库重建：
+    保留运行时数据（画像/会话记录），不动 rowid → FTS/vec 外部表行对齐不受影响。
+    列已存在时零操作，反复运行安全。"""
+    cols = {row[1] for row in db.execute("PRAGMA table_info(knowledge_entries)")}
+    if "knowledge_type" not in cols:
+        db.execute(
+            "ALTER TABLE knowledge_entries ADD COLUMN knowledge_type TEXT "
+            "NOT NULL DEFAULT 'concept' CHECK(knowledge_type IN ('memory', 'concept', 'procedure'))"
+        )
 
 
 def sync_fts(db: sqlite3.Connection, entries: list[SeedEntry]) -> None:
@@ -177,15 +202,16 @@ def upsert_entries(db: sqlite3.Connection, domain: str, entries: list[SeedEntry]
     for e in entries:
         db.execute(
             """INSERT INTO knowledge_entries
-               (id, domain, title, content, prerequisites, difficulty, keywords, source)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+               (id, domain, knowledge_type, title, content, prerequisites, difficulty, keywords, source)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(id) DO UPDATE SET
-                 domain=excluded.domain, title=excluded.title, content=excluded.content,
+                 domain=excluded.domain, knowledge_type=excluded.knowledge_type,
+                 title=excluded.title, content=excluded.content,
                  prerequisites=excluded.prerequisites, difficulty=excluded.difficulty,
                  keywords=excluded.keywords, source=excluded.source,
                  updated_at=datetime('now')""",
             (
-                e.id, domain, e.title, e.content,
+                e.id, domain, e.knowledge_type.value, e.title, e.content,
                 json.dumps(e.prerequisites, ensure_ascii=False),
                 e.difficulty,
                 json.dumps(e.keywords, ensure_ascii=False),

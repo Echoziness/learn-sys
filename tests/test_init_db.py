@@ -1,4 +1,5 @@
-"""init_db 幂等性：反复运行条目数/向量数不变，不崩 UNIQUE 约束（重构前的已验证 bug）。"""
+"""init_db 幂等性：反复运行条目数/向量数不变，不崩 UNIQUE 约束（重构前的已验证 bug）。
+旧库（无 knowledge_type 列）重跑时幂等补列（ALTER TABLE，保留运行时数据与 rowid 对齐）。"""
 
 import json
 import sqlite3
@@ -22,6 +23,7 @@ def seed_dir(tmp_path):
                 json.dumps(
                     {
                         "id": "T-001",
+                        "knowledge_type": "memory",
                         "title": "条目一",
                         "content": "内容一",
                         "prerequisites": [],
@@ -77,8 +79,67 @@ def test_init_twice_is_idempotent(seed_dir, tmp_path):
     sqlite_vec.load(db)
     # 画像未变化时不重复记录 profile_updates
     updates = db.execute("SELECT count(*) FROM profile_updates WHERE learner_id='u1'").fetchone()[0]
+    # knowledge_type 落库：显式值与默认值（concept）
+    types = {
+        eid: kt
+        for eid, kt in db.execute("SELECT id, knowledge_type FROM knowledge_entries")
+    }
     db.close()
     assert updates == 1
+    assert types == {"T-001": "memory", "T-002": "concept"}
+
+
+def test_old_schema_db_gets_knowledge_type_column(seed_dir, tmp_path):
+    """升级前旧库（无 knowledge_type 列）重跑 init_db：幂等补列、保留既有行、可再跑。
+
+    选择 ALTER TABLE 迁移而非删库重建：运行时数据（画像/会话记录）与 rowid
+    对齐均不受影响；补列后继续按 upsert 逻辑写入种子。
+    """
+    db_path = str(tmp_path / "knowledge.db")
+    db = sqlite3.connect(db_path)
+    db.executescript(
+        """
+        CREATE TABLE knowledge_entries (
+            id TEXT PRIMARY KEY,
+            domain TEXT NOT NULL DEFAULT 'bigdata-analysis',
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            prerequisites TEXT,
+            difficulty INTEGER CHECK(difficulty BETWEEN 1 AND 5),
+            keywords TEXT,
+            source TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now'))
+        );
+        """
+    )
+    db.execute(
+        "INSERT INTO knowledge_entries"
+        "(id, domain, title, content, prerequisites, difficulty, keywords, source)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        ("OLD-001", "test-domain", "旧条目", "旧内容", "[]", 1, "[]", "old"),
+    )
+    db.commit()
+    db.close()
+
+    counts = init_database(db_path, seed_dir, _fake_embed)
+    assert counts["entries"] == 3
+
+    db = sqlite3.connect(db_path)
+    db.enable_load_extension(True)
+    sqlite_vec.load(db)
+    cols = {row[1] for row in db.execute("PRAGMA table_info(knowledge_entries)")}
+    assert "knowledge_type" in cols
+    # 旧行未丢、补列后取默认值 concept
+    old_type = db.execute(
+        "SELECT knowledge_type FROM knowledge_entries WHERE id='OLD-001'"
+    ).fetchone()[0]
+    db.close()
+    assert old_type == "concept"
+
+    # 迁移完成后重跑依旧幂等
+    again = init_database(db_path, seed_dir, _fake_embed)
+    assert again == counts
 
 
 def test_entry_update_preserves_rowid_alignment(seed_dir, tmp_path):
