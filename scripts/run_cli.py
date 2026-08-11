@@ -24,8 +24,10 @@ from dotenv import load_dotenv
 
 from core.agents.diagnose import diagnose_node
 from core.agents.feedback import feedback_node
+from core.agents.question import question_node
 from core.assess import (
     GradeResult,
+    Question,
     build_feedback_message,
     build_question,
     grade_answer,
@@ -42,6 +44,9 @@ from core.state import AgentState, LearnerProfile
 from evals.metrics import hallucination_rate
 
 logger = structlog.get_logger()
+
+# 回答题题干缓存：同一主题反复教学用同一道题（可复现、省调用）
+_question_cache: dict[str, str] = {}
 
 
 def load_profile(db_path: str, learner_id: str) -> LearnerProfile:
@@ -132,6 +137,25 @@ async def teach_topic(
             print("\n[审核] 全部论断通过")
 
         question = build_question(topic, distractors=entries, mastery=compute_mastery(correctness))
+        if question.question_type == "answer" and not _question_cache.get(topic.id):
+            try:
+                q = await question_node(
+                    {"entry": asdict(topic)},
+                    provider=provider,
+                    model=settings.question_model,
+                )
+                if q["question"]:
+                    _question_cache[topic.id] = q["question"]
+            except Exception:
+                logger.warning("question_llm_failed_fallback_template", entry_id=topic.id)
+        if question.question_type == "answer" and _question_cache.get(topic.id):
+            question = Question(
+                question_id=question.question_id,
+                entry_id=question.entry_id,
+                prompt=_question_cache[topic.id],
+                question_type=question.question_type,
+                expected_keywords=question.expected_keywords,
+            )
         print(f"\n[检验] {question.prompt}")
         for opt in question.options:
             print(f"  {opt}")
