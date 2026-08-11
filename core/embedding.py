@@ -20,9 +20,9 @@ class BGEEncoder:
             model_name, cache_folder=cache_folder, local_files_only=local_files_only
         )
         # sentence-transformers ≥3.x 改名 get_embedding_dimension，保留旧名回退
-        get_dim = getattr(self._model, "get_embedding_dimension", None) or getattr(
-            self._model, "get_sentence_embedding_dimension"
-        )
+        get_dim = getattr(self._model, "get_embedding_dimension", None)
+        if get_dim is None:
+            get_dim = self._model.get_sentence_embedding_dimension
         dim = get_dim()
         if dim is None:
             raise RuntimeError(f"无法确定模型 {model_name} 的向量维度")

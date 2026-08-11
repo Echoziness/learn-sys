@@ -266,7 +266,7 @@ def init_database(
         for domain, entries in domains.items():
             upsert_entries(db, domain, entries)
         sync_fts(db, all_entries)
-        synced = sync_vectors(db, all_entries, embeddings)
+        sync_vectors(db, all_entries, embeddings)
         for profile in profiles:
             upsert_profile(db, profile)
         db.commit()

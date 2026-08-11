@@ -10,13 +10,17 @@ from collections.abc import Iterable
 from typing import TypeVar, cast
 
 import structlog
-from openai import AsyncOpenAI, BadRequestError
+from openai import AsyncOpenAI, BadRequestError, Timeout
 from openai.types.chat import ChatCompletionMessageParam
 from pydantic import BaseModel, ValidationError
 
 logger = structlog.get_logger()
 
 T = TypeVar("T", bound=BaseModel)
+
+# LLM 调用超时。AsyncOpenAI 默认 600s 无限制——API 挂起时表现为"死机"。
+# 连接 10s / 读取 180s：正常 generate/review 响应 15-60s，180s 足够且不会无限挂。
+LLM_TIMEOUT = Timeout(connect=10.0, read=180.0, write=30.0, pool=10.0)
 
 
 class LLMOutputError(Exception):
@@ -35,7 +39,7 @@ class LLMProvider:
     ):
         self.model = model
         self._extra_body = extra_body
-        self._client = AsyncOpenAI(base_url=base_url, api_key=api_key)
+        self._client = AsyncOpenAI(base_url=base_url, api_key=api_key, timeout=LLM_TIMEOUT)
         logger.info("llm_provider_ready", base_url=base_url, model=model)
 
     async def chat(self, messages: list[dict[str, str]], model: str | None = None, **kwargs) -> str:
@@ -85,7 +89,13 @@ class LLMProvider:
                 messages = [
                     *messages,
                     {"role": "assistant", "content": raw},
-                    {"role": "user", "content": f"上次输出未通过 JSON Schema 校验：{e}\n请仅输出修正后的合法 JSON。"},
+                    {
+                        "role": "user",
+                        "content": (
+                            f"上次输出未通过 JSON Schema 校验：{e}\n"
+                            "请仅输出修正后的合法 JSON。"
+                        ),
+                    },
                 ]
         raise LLMOutputError(f"{schema.__name__} 校验失败（已修复重试 {max_repairs} 次）: {last_error}")
 

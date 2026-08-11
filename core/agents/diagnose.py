@@ -12,9 +12,12 @@ logger = structlog.get_logger()
 DIAGNOSE_PROMPT = """你是一位学情诊断专家。根据学习者的背景信息和测试结果，完成以下任务：
 
 1. 分析学习者的已有知识基础和技能盲区。
-2. 为"大数据分析初级"方向，列出最需要学习的前 5 个知识点（用简洁的中文短语，如"SQL 查询基础""描述性统计""pandas 数据处理"；短语中不要使用引号、冒号等特殊符号）。
+2. 为"大数据分析初级"方向，列出最需要学习的前 5 个知识点
+   （用简洁的中文短语，如"SQL 查询基础""描述性统计""pandas 数据处理"；
+   短语中不要使用引号、冒号等特殊符号）。
 3. 输出一段 50 字以内的学习者画像摘要。
-4. 评估学习者当前的整体水平：beginner（零基础或刚入门）、intermediate（有一定基础）、advanced（基础扎实）。判断依据是已有知识储备和背景经历，而非测试结果。
+4. 评估学习者当前的整体水平：beginner（零基础或刚入门）、intermediate（有一定基础）、
+   advanced（基础扎实）。判断依据是已有知识储备和背景经历，而非测试结果。
 
 测试结果（可为空，为空则仅根据背景推断）：
 {test_results}
@@ -45,7 +48,12 @@ async def diagnose_node(
         schema=DiagnoseOutput,
         model=model,
     )
-    logger.info("diagnose_done", gaps_count=len(output.gaps), summary=output.profile_summary[:40], level=output.difficulty_level)
+    logger.info(
+        "diagnose_done",
+        gaps_count=len(output.gaps),
+        summary=output.profile_summary[:40],
+        level=output.difficulty_level,
+    )
     return {
         "gaps": output.gaps,
         "profile_summary": output.profile_summary,

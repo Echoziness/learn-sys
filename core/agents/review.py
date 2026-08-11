@@ -31,7 +31,8 @@ REVIEW_PROMPT = """你是知识审核裁判。你的任务是逐条判断：给�
 {draft}
 
 严格按以下 JSON 格式输出（claim_index 必须与输入一一对应）：
-{{"reviews": [{{"claim_index": 1, "verdict": "supported", "reason": "判断理由", "suggestion": "若不通过，给出修改建议"}}, ...]}}
+{{"reviews": [{{"claim_index": 1, "verdict": "supported", "reason": "判断理由",
+  "suggestion": "若不通过，给出修改建议"}}, ...]}}
 """
 
 
@@ -107,7 +108,14 @@ async def review_node(
         cited_map = json.dumps({e.id: e.content for e in cited_entries}, ensure_ascii=False)
         draft_text = json.dumps([c.model_dump() for c in pending], ensure_ascii=False)
         output = await provider.chat_validated(
-            [{"role": "user", "content": REVIEW_PROMPT.format(cited_entries_map=cited_map, draft=draft_text)}],
+            [
+                {
+                    "role": "user",
+                    "content": REVIEW_PROMPT.format(
+                        cited_entries_map=cited_map, draft=draft_text
+                    ),
+                }
+            ],
             schema=ReviewOutput,
             model=model,
         )

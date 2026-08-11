@@ -5,7 +5,6 @@ import sqlite3
 
 import pytest
 import sqlite_vec
-
 from scripts.init_db import init_database
 
 
@@ -101,7 +100,8 @@ def test_entry_update_preserves_rowid_alignment(seed_dir, tmp_path):
     db.enable_load_extension(True)
     sqlite_vec.load(db)
     orphans = db.execute(
-        "SELECT count(*) FROM knowledge_vec v LEFT JOIN knowledge_entries k ON k.rowid = v.rowid WHERE k.rowid IS NULL"
+        "SELECT count(*) FROM knowledge_vec v LEFT JOIN knowledge_entries k "
+        "ON k.rowid = v.rowid WHERE k.rowid IS NULL"
     ).fetchone()[0]
     content = db.execute("SELECT content FROM knowledge_entries WHERE id='T-001'").fetchone()[0]
     db.close()
