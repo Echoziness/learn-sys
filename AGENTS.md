@@ -101,6 +101,8 @@ diagnose（LLM 一次）→ plan（确定性切片：gap→条目匹配 + 前置
 | plan（纯函数） | —（不入 state，CLI 直接调用） | — |
 | assess（纯函数） | 条目（KnowledgeEntry）+ 当前掌握度 | 题目（按掌握度选题型） |
 | feedback（LLM 节点） | 题目、作答、规则判分结果 | verdict / evaluation（CLI 层用） |
+| question（LLM 节点） | 条目（id/title/content/keywords） | 题干 + expected（服务端校验字符出自 content） |
+| answer_pipeline（服务函数） | 题目、作答、掌握度历史 | AnswerOutcome（判分/评估/决策，CLI 与 Web 共用） |
 
 每个节点只读写表内 key，越界即 code review 驳回。隔离红线：review 禁止任何画像字段（含 `profile_summary`）；generate 只读 `profile_summary` 摘要，禁止 `learner_profile` 原始模型；对话日志永不进生成上下文。
 
@@ -162,7 +164,7 @@ diagnose（LLM 一次）→ plan（确定性切片：gap→条目匹配 + 前置
 
 ```bash
 uv sync                                          # Python 依赖
-uv run python scripts/run_cli.py test1 --sim 0.8  # 会话 CLI（--sim 模拟学生；Phase 3 后为 uvicorn api.main:app）
+uv run python scripts/run_cli.py test1 --sim 0.8 --max-rounds 1  # 会话 CLI（--sim 模拟学生 / --max-rounds 单轮验证；Phase 3 后为 uvicorn api.main:app）
 cd web && pnpm install && pnpm dev                # 前端
 uv run pytest -v                                  # 测试
 uv run pyright core/ scripts/ tests/               # Python 类型检查
