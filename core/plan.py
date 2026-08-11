@@ -143,7 +143,8 @@ def build_plan(
     wanted: set[str] = set()
     uncovered: list[str] = []
     for gap in gaps:
-        matched = match_gap_to_entry(gap, entries)
+        # gap 可能是本体 ID（diagnose 收敛输出）或自由文本（fallback 匹配）。
+        matched = by_id.get(gap) or match_gap_to_entry(gap, entries)
         if matched is None:
             uncovered.append(gap)
             continue

@@ -41,7 +41,8 @@ class ReviewNote(BaseModel):
 
 
 class DiagnoseOutput(BaseModel):
-    gaps: list[str]
+    gaps: list[str] = Field(default_factory=list)  # 自由文本盲区（备选，供展示）
+    gap_ids: list[str] = Field(default_factory=list)  # 收敛到知识本体的条目 ID（切片依据）
     profile_summary: str
     difficulty_level: Literal["beginner", "intermediate", "advanced"]
 

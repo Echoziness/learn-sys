@@ -141,7 +141,17 @@ async def teach_topic(
             else:
                 answer = "我还没完全学会，说不清楚。"
         else:
-            answer = input("[你的作答] ").strip()
+            try:
+                if question.question_type == "choice":
+                    labels = "/".join(o[0] for o in question.options)
+                    answer = input(f"[你的作答]（输入选项字母 {labels}，如 A）：").strip()
+                else:
+                    answer = input("[你的作答]：").strip()
+            except EOFError:
+                answer = ""
+            if not answer:
+                print("\n[退出] 未作答，结束会话。")
+                break
         grade: GradeResult = grade_answer(question, answer)
         correctness.append(grade.is_correct)
         print(f"[反馈] {'✓ 正确' if grade.is_correct else '✗ 不完整'} "
@@ -202,17 +212,20 @@ async def main() -> None:
     print(json.dumps(profile.model_dump(), ensure_ascii=False, indent=2))
 
     print_section("诊断")
+    catalog = [{"id": e.id, "title": e.title} for e in entries]
     diag = await diagnose_node(
         {"learner_profile": profile, "test_results": []},
         provider=provider,
         model=settings.diagnose_model,
+        entry_catalog=catalog,
     )
     print(f"画像摘要: {diag['profile_summary']}")
-    print(f"知识盲区: {diag['gaps']}")
+    gap_titles = [c["title"] for c in catalog if c["id"] in diag["gap_ids"]]
+    print(f"知识盲区: {gap_titles or diag['gaps']}")
     print(f"难度水平: {diag['difficulty_level']}")
 
     print_section("课程切片")
-    plan = build_plan(entries, diag["gaps"], max_difficulty=5)
+    plan = build_plan(entries, diag["gap_ids"] or diag["gaps"], max_difficulty=5)
     for t in plan.topics:
         mark = "◎目标" if t.target else "○前置链补入"
         print(f"  {t.order}. [{mark}] {t.title} ({t.entry_id})")
