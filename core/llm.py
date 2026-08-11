@@ -50,7 +50,14 @@ class LLMProvider:
             messages=cast(Iterable[ChatCompletionMessageParam], messages),
             **kwargs,
         )
-        content = resp.choices[0].message.content
+        choice = resp.choices[0]
+        # 截断检查：finish_reason=length 说明输出被 max_tokens 掐断，
+        # JSON 必然残缺——直接显式报错，避免解析半个 JSON 后走无意义的重试。
+        if choice.finish_reason == "length":
+            raise LLMOutputError(
+                "LLM 输出被 max_tokens 截断（finish_reason=length），需要增大 max_tokens 或精简输出"
+            )
+        content = choice.message.content
         if content is None:
             raise LLMOutputError("LLM 返回空 content")
         return content

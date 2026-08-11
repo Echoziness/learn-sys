@@ -45,8 +45,8 @@ from evals.metrics import hallucination_rate
 
 logger = structlog.get_logger()
 
-# 回答题题干缓存：同一主题反复教学用同一道题（可复现、省调用）
-_question_cache: dict[str, str] = {}
+# 回答题 (题干, 判分要点) 缓存：同一主题反复教学用同一道题（可复现、省调用）
+_question_cache: dict[str, tuple[str, tuple[str, ...]]] = {}
 
 
 def load_profile(db_path: str, learner_id: str) -> LearnerProfile:
@@ -137,7 +137,7 @@ async def teach_topic(
             print("\n[审核] 全部论断通过")
 
         question = build_question(topic, distractors=entries, mastery=compute_mastery(correctness))
-        if question.question_type == "answer" and not _question_cache.get(topic.id):
+        if question.question_type == "answer" and topic.id not in _question_cache:
             try:
                 q = await question_node(
                     {"entry": asdict(topic)},
@@ -145,16 +145,19 @@ async def teach_topic(
                     model=settings.question_model,
                 )
                 if q["question"]:
-                    _question_cache[topic.id] = q["question"]
+                    _question_cache[topic.id] = (q["question"], tuple(q["expected_keywords"]))
             except Exception:
                 logger.warning("question_llm_failed_fallback_template", entry_id=topic.id)
-        if question.question_type == "answer" and _question_cache.get(topic.id):
+        cached = _question_cache.get(topic.id)
+        if question.question_type == "answer" and cached is not None:
+            prompt, expected = cached
             question = Question(
                 question_id=question.question_id,
                 entry_id=question.entry_id,
-                prompt=_question_cache[topic.id],
+                prompt=prompt,
                 question_type=question.question_type,
-                expected_keywords=question.expected_keywords,
+                # LLM 校验通过的要点优先；为空（校验全失败）回退条目 keywords。
+                expected_keywords=expected or question.expected_keywords,
             )
         print(f"\n[检验] {question.prompt}")
         for opt in question.options:

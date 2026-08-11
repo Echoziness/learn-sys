@@ -1,28 +1,31 @@
-"""题目生成 Agent——回答题题干由 LLM 生成，判分要点仍由规则派生。
+"""题目生成 Agent——回答题题干与判分要点一起由 LLM 生成，服务端校验。
 
-设计（2026-08-11 拍板）：模板题干"请用自己的话解释「X」"过于宽泛，
-学生不知道该解释到什么深度、从什么角度，容易变成关键词罗列。
+设计（2026-08-11 拍板，修复"题目与判分脱节"缺陷）：
+- LLM 生成 {question, expected_keywords}——题目问什么，判分就看什么；
+- **服务端校验**：每个 expected 要点的字符必须全部出现在条目 content 中
+  （复用 test_seeds 同款字符子集校验）——LLM 编造的超纲要点直接丢弃，
+  全部校验失败则回退条目原始 keywords（fail-closed）；
+- 校验通过的 expected 才进判分，按 entry_id 与题干一起缓存；
+- 判定"测什么"的最终权威在服务端规则，LLM 只提供候选。
 
-分离原则的又一次应用：
-- **测什么**（expected_keywords）由规则从条目派生，LLM 无权改动——判分确定性不变；
-- **怎么问**（题干文本）由 LLM 基于条目内容生成——更具体、有引导性、贴近真实提问。
-
-约束：
-- 题干必须围绕条目内容（prompt 明令禁止问条目之外的知识）；
-- LLM 失败/超时 → 调用方回退确定性模板（fail-closed，绝不给出无校验的题目）；
-- 同一条目的题干按 entry_id 缓存，多次教学复用（可复现、省调用）。
+约束：题干必须围绕条目内容；expected 数量 1-4 个（防止过严/过宽）。
 """
 
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, TypedDict
 
 from pydantic import BaseModel, Field
 
 from core.llm import LLMProvider
 
-QUESTION_PROMPT = """你是一位经验丰富的培训讲师。请为下面这个知识条目设计一道引导性的回答题。
+# 判分要点数量上限：过多则覆盖率判定过严（答对一题要全说才 60%）。
+MAX_EXPECTED_KEYWORDS = 4
+
+QUESTION_PROMPT = """你是一位经验丰富的培训讲师。请为下面这个知识条目设计一道引导性的回答题，
+并列出学生回答这道题时必须覆盖的要点。
 
 【知识条目】
 {entry}
@@ -35,22 +38,54 @@ QUESTION_PROMPT = """你是一位经验丰富的培训讲师。请为下面这�
 4. 问题长度 30-80 字，中文，一段话。
 5. 不要给出答案，只输出问题。
 
-严格按 JSON 输出：{{"question": "问题文本"}}"""
+【判分要点要求】
+1. expected_keywords：2-4 个，必须是学生回答这道题时需要提到的关键概念或术语。
+2. 每个要点都必须能从条目的 content 原文中找到对应内容——禁止编造条目里没有的概念。
+3. 要点要贴合你的题目：题目问什么，要点就是答什么需要的。
+
+严格按 JSON 输出：
+{{"question": "问题文本", "expected_keywords": ["要点1", "要点2"]}}"""
 
 
 class QuestionOutput(BaseModel):
     question: str = Field(description="引导性回答题题干")
+    expected_keywords: list[str] = Field(
+        default_factory=list, description="回答此题需覆盖的判分要点"
+    )
 
 
 class QuestionInput(TypedDict, total=False):
     entry: dict[str, Any]
 
 
+def validate_expected_keywords(keywords: list[str], content: str) -> list[str]:
+    """服务端校验判分要点：字符必须全部出自条目 content，数量 1-4。
+
+    校验通过的才可进判分——LLM 编造的超纲要点被丢弃。
+    """
+    content_chars = set(re.sub(r"\s+", "", content or "").lower())
+    valid: list[str] = []
+    for kw in keywords or []:
+        text = (kw or "").strip()
+        if not text:
+            continue
+        chars = set(re.sub(r"\s+", "", text.lower()))
+        if chars and chars.issubset(content_chars):
+            valid.append(text)
+        if len(valid) >= MAX_EXPECTED_KEYWORDS:
+            break
+    return valid
+
+
 async def question_node(state: QuestionInput, *, provider: LLMProvider, model: str | None = None) -> dict:
-    """生成回答题题干。返回 {"question": str}；异常由调用方回退模板。"""
+    """生成回答题题干 + 判分要点（服务端校验后返回）。
+
+    返回 {"question": str, "expected_keywords": [...]}。expected 校验失败
+    返回空列表，由调用方回退条目原始 keywords。
+    """
     entry = state.get("entry")
     if entry is None:
-        return {"question": ""}
+        return {"question": "", "expected_keywords": []}
     entry_text = json.dumps(
         {
             "id": entry["id"],
@@ -66,7 +101,8 @@ async def question_node(state: QuestionInput, *, provider: LLMProvider, model: s
         schema=QuestionOutput,
         model=model,
     )
-    return {"question": output.question}
+    valid = validate_expected_keywords(output.expected_keywords, entry.get("content", ""))
+    return {"question": output.question, "expected_keywords": valid}
 
 
-__all__ = ["QuestionOutput", "question_node"]
+__all__ = ["QuestionOutput", "validate_expected_keywords", "question_node"]

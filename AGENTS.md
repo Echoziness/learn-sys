@@ -27,7 +27,7 @@ learn-sys/
 │   │   ├── generate.py      # 领域知识生成（anchor 主条目/背景条目分离）
 │   │   ├── review.py        # 审核裁判（rule_check/merge_verdicts 为纯函数，可单测）
 │   │   ├── feedback.py      # LLM 判分复核 + 教学评估（fail-closed 回退规则）
-│   │   └── question.py        # 回答题题干生成（场景化提问；expected 仍由规则派生，按 entry_id 缓存）
+│   │   └── question.py        # 回答题题干+判分要点生成（场景化提问；expected 服务端校验字符出自 content，按 entry_id 缓存）
 │   ├── state.py             # AgentState + 全部 agent 间消息的 Pydantic 模型
 │   ├── graph.py             # build_teach_graph 教学子图（retrieve→generate→review）依赖注入装配
 │   ├── mastery.py           # 掌握度数学唯一事实源（纯函数：加权+置信度封顶+门槛+降维判定）
@@ -110,7 +110,8 @@ diagnose（LLM 一次）→ plan（确定性切片：gap→条目匹配 + 前置
 - 出题/判分只在 `core/assess.py`（fail-closed：无 expected 关键词即判错，绝不判对）；expected 永不进学生视野；
 - 题型仅两种且与知识类型解耦：choice（选择题，识别式）与 answer（回答题，回忆式），由掌握度驱动（<0.5 选择 / ≥0.5 回答，对齐 PRD 阶梯）；选择题干扰项从其他条目关键词确定性构造（不调 LLM），判分只认选项标签（贴全文不算对）；
 - answer 判分两级：规则预筛（覆盖率 <0.6 直接判错不调 LLM）→ 覆盖达标送 LLM 复核（`core/agents/feedback.py`，可识别关键词罗列/逻辑错误并输出教学评估）；LLM 失败回退规则，绝不判对；
-- 回答题题干由 LLM 生成（`core/agents/question.py`，场景化提问，禁止问条目之外内容），expected_keywords 仍由规则派生——测什么与怎么问分离，判分确定性不变；题干按 entry_id 缓存复用；生成失败回退模板；
+- 回答题题干与判分要点由 LLM 一起生成（`core/agents/question.py`，场景化提问，禁止问条目之外内容）；expected 服务端校验——字符必须全部出自条目 content（防 LLM 编造，`validate_expected_keywords` 纯函数可单测），校验失败回退条目 keywords；按 entry_id 缓存 (题干, expected) 对；
+- LLM 输出截断防护：`core/llm.py` 检查 finish_reason=length 显式抛 `LLMOutputError`（JSON 必然残缺，不做无意义重试）；
 - 知识条目必带 `knowledge_type`（`memory` 事实/定义/术语 / `concept` 概念与关系 / `procedure` 步骤技能，枚举在 `scripts/init_db.py.KnowledgeType`，DB 列 DEFAULT 'concept'），描述知识本体（影响教学方式/门槛/复习节奏），不绑定题型，core/plan.KnowledgeEntry 同持此字段（默认 concept）；
 - 新增种子条目 content 控制在 50-100 字（代码片段算字符），且每个关键词去空格后的全部字符必须出现在 content 里（判分靠子串，`tests/test_seeds.py` 全量校验）；
 - DB schema 变更禁止删库重建：`scripts/init_db.py` 用幂等迁移（PRAGMA table_info 查列 → 缺则 `ALTER TABLE ADD COLUMN`），保留运行时数据与 rowid 对齐（FTS/vec 外部表依赖）。
