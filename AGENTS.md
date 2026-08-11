@@ -16,7 +16,7 @@
 | 前端图表 | React Flow（@xyflow/react）+ Recharts |
 | 交付 | `docker compose up --build` |
 | 包管理 | Python → uv · JS → pnpm |
-| CLI 交互 | prompt_toolkit（scripts/cli_input.py：方向键选择题 + 行编辑回答题 + 输入边界净化） |
+| CLI 交互 | stdlib readline + 输入净化（scripts/cli_input.py，开发自测用，不深投入） |
 
 ## 2. 仓库结构
 
@@ -34,6 +34,7 @@ learn-sys/
 │   ├── mastery.py           # 掌握度数学唯一事实源（纯函数：加权+置信度封顶+门槛+降维判定）
 │   ├── plan.py              # 课程切片（纯函数：gap匹配+前置链闭包+难度过滤+拓扑排序）+ KnowledgeEntry 模型
 │   ├── assess.py            # 确定性出题/判分（纯函数：掌握度驱动题型——低掌握度选择题/高掌握度回答题，fail-closed）
+│   ├── answer_pipeline.py     # 作答处理管线（判分→LLM复核→掌握度→决策，CLI/Web 共用入口）
 │   ├── llm.py               # LLMProvider（AsyncOpenAI，显式 180s 读取超时）+ chat_validated 校验重试
 │   ├── retrieval.py         # Retriever 类：FTS5(CJK逐字切分) + sqlite-vec + RRF + 覆盖度判定
 │   ├── embedding.py         # BGEEncoder（仅组合根 import，加载 ~2GB 模型）
@@ -42,7 +43,7 @@ learn-sys/
 ├── api/                     # FastAPI（薄层，只做序列化→转发→推流，Phase 3 挂载）
 │   └── routes/
 ├── scripts/                 # 组合根
-│   ├── cli_input.py         # CLI 交互输入层（prompt_toolkit：选择题方向键选择/回答题行编辑/非 TTY 回退/输入净化）
+│   ├── cli_input.py         # CLI 交互输入层（readline 行编辑 + 输入边界净化；刻意轻量，主战场在 Web）
 │   ├── init_db.py           # 幂等知识库 loader（数据来自 data/seeds/，不内嵌数据）
 │   └── run_cli.py           # 会话 CLI：诊断→切片→逐主题教学→问答循环→降维
 ├── data/

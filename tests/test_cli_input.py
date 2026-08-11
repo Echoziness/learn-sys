@@ -1,6 +1,6 @@
 """cli_input 输入层：净化、非 TTY 回退、选择映射。"""
 
-from scripts.cli_input import Choice, _sanitize, ask_choice, ask_text, is_interactive
+from scripts.cli_input import Choice, _sanitize, ask_choice, ask_text
 
 
 def test_sanitize_removes_surrogates():
@@ -18,7 +18,6 @@ def test_sanitize_trims():
 
 def test_non_tty_choice_maps_label(monkeypatch):
     """非 TTY 回退 input()：输入标签映射到 value，大小写不敏感。"""
-    assert not is_interactive()
     monkeypatch.setattr("builtins.input", lambda _: "B")
     result = ask_choice("题目", [Choice(label="A. 选项一", value="A"), Choice(label="B. 选项二", value="B")])
     assert result == "B"

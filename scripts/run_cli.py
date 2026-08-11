@@ -17,21 +17,17 @@ import json
 import random
 import sqlite3
 from collections import defaultdict
-from dataclasses import asdict
 
 import structlog
 from dotenv import load_dotenv
 from scripts.cli_input import Choice, ask_choice, ask_text
 
 from core.agents.diagnose import diagnose_node
-from core.agents.feedback import feedback_node
 from core.agents.question import question_node
+from core.answer_pipeline import process_answer
 from core.assess import (
-    GradeResult,
     Question,
-    build_feedback_message,
     build_question,
-    grade_answer,
 )
 from core.config import Settings
 from core.embedding import BGEEncoder
@@ -106,6 +102,7 @@ async def teach_topic(
     *,
     provider: LLMProvider,
     settings: Settings,
+    max_rounds: int = 0,
 ) -> tuple[list[bool], dict]:
     """教一个主题：教学（图）→ 出题 → 作答 → 判分 → 决策，直到 advance/regress。
 
@@ -116,6 +113,9 @@ async def teach_topic(
     final: dict = {}
     while True:
         round_no += 1
+        if max_rounds and round_no > max_rounds:
+            print(f"\n[决策] 达到验证轮数上限（{max_rounds}），跳过剩余教学。")
+            break
         print_section(f"教学单元（第 {round_no} 轮）：{topic.title}")
         state: AgentState = {
             "learner_id": "session",
@@ -141,7 +141,14 @@ async def teach_topic(
         if question.question_type == "answer" and topic.id not in _question_cache:
             try:
                 q = await question_node(
-                    {"entry": asdict(topic)},
+                    {
+                        "entry": {
+                            "id": topic.id,
+                            "title": topic.title,
+                            "content": topic.content,
+                            "keywords": topic.keywords,
+                        }
+                    },
                     provider=provider,
                     model=settings.question_model,
                 )
@@ -185,34 +192,20 @@ async def teach_topic(
             if not answer:
                 print("\n[退出] 未作答，结束会话。")
                 break
-        grade: GradeResult = grade_answer(question, answer)
 
-        # feedback：确定性快路径 + LLM 复核/评估（fail-closed，LLM 失败回退规则）
-        is_correct = grade.is_correct
-        evaluation = build_feedback_message(grade, question)
-        need_llm = (question.question_type == "answer" and grade.keyword_coverage >= 0.6) or (
-            question.question_type == "choice" and not grade.is_correct
+        outcome = await process_answer(
+            provider,
+            question,
+            answer,
+            correctness,
+            model=settings.feedback_model,
         )
-        if need_llm:
-            fb = await feedback_node(
-                {
-                    "question": asdict(question),
-                    "answer": answer,
-                    "rule_is_correct": grade.is_correct,
-                    "rule_coverage": grade.keyword_coverage,
-                },
-                provider=provider,
-                model=settings.feedback_model,
-            )
-            is_correct = fb["verdict"] == "correct"
-            if fb["evaluation"]:
-                evaluation = fb["evaluation"]
-        correctness.append(is_correct)
-        print(f"[反馈] {'✓ 正确' if is_correct else '✗ 不完整'} "
-              f"（覆盖率 {grade.keyword_coverage:.0%}）")
-        print(evaluation)
+        correctness.append(outcome.is_correct)
+        print(f"[反馈] {'✓ 正确' if outcome.is_correct else '✗ 不完整'} "
+              f"（覆盖率 {outcome.grade.keyword_coverage:.0%}）")
+        print(outcome.evaluation)
 
-        decision, mastery = decide_next_step(correctness)
+        decision, mastery = outcome.decision, outcome.mastery
         logger.info(
             "topic_round",
             entry_id=topic.id,
@@ -220,6 +213,7 @@ async def teach_topic(
             decision=decision,
             mastery=round(mastery, 3),
             attempts=len(correctness),
+            llm_reviewed=outcome.llm_reviewed,
         )
         if decision == "advance":
             tag = "（轮次上限放行，未达门槛）" if mastery < 0.7 else ""
@@ -238,6 +232,8 @@ async def main() -> None:
     parser.add_argument("learner_id", nargs="?", default="test1")
     parser.add_argument("--sim", type=float, default=None,
                         help="模拟学生模式：按 RATE 概率答对（0-1）")
+    parser.add_argument("--max-rounds", type=int, default=0,
+                        help="每个主题最多教学轮数（默认 0=不限制；验证用 1-2 即可）")
     parser.add_argument("--out", default=None, help="将最终 state 写出为 JSON 文件")
     args = parser.parse_args()
 
@@ -301,6 +297,7 @@ async def main() -> None:
             args.sim,
             provider=provider,
             settings=settings,
+            max_rounds=args.max_rounds,
         )
         mastery_history[topic.entry_id].extend(correctness)
 
