@@ -15,13 +15,12 @@ fail-closed：LLM 调用失败/超时时回退规则判定与规则反馈消息�
 
 from __future__ import annotations
 
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal, Protocol, TypedDict
 
 import structlog
 from pydantic import BaseModel, Field
 
 from core.assess import Question
-from core.llm import LLMProvider
 
 logger = structlog.get_logger()
 
@@ -48,24 +47,32 @@ class FeedbackOutput(BaseModel):
     evaluation: str = Field(description="给学生看的教学评估文本")
 
 
+class FeedbackLLM(Protocol):
+    """feedback 需要的 LLM 最小接口：测试可用 Fake 注入。"""
+
+    async def chat_validated(self, messages, schema, model=None, **kwargs) -> Any: ...
+
+
 class FeedbackInput(TypedDict, total=False):
     """feedback 输入：question（Question 序列化 dict）、学生作答、规则判分结果。"""
 
     question: dict[str, Any]
     answer: str
     rule_is_correct: bool
+    rule_coverage: float
 
 
 async def feedback_node(
     state: FeedbackInput,
     *,
-    provider: LLMProvider,
+    provider: FeedbackLLM,
     model: str | None = None,
 ) -> dict:
     """对当前作答做 LLM 复核 + 教学评估。
 
     state 需含：question（Question 序列化）、answer（学生作答）、
-    rule_is_correct（规则判分结果）。返回 verdict / evaluation 两个字段。
+    rule_is_correct（规则判分结果）、rule_coverage（规则覆盖率）。
+    返回 verdict / evaluation 两个字段。
     """
     question_raw = state.get("question")
     answer = state.get("answer", "")
@@ -94,11 +101,17 @@ async def feedback_node(
             model=model,
         )
     except Exception as exc:
-        # fail-closed：LLM 不可用时回退规则判定，评估文本由规则消息兜底。
-        logger.warning("feedback_llm_failed_fallback_rule", error=str(exc)[:120])
-        rule_ok = bool(state.get("rule_is_correct", False))
+        # fail-closed：LLM 缺席时没有"理解质量"的证据——按更严标准回退：
+        # 要求关键词全覆盖（coverage=1.0）才判对，否则判 incorrect（retry）。
+        # 规则的低阈值（0.6）是 LLM 复核存在时的预筛，不能单独作为放行依据。
+        coverage = float(state.get("rule_coverage", 0.0))
+        logger.warning(
+            "feedback_llm_failed_fallback_rule",
+            error=str(exc)[:120],
+            coverage=coverage,
+        )
         return {
-            "verdict": "correct" if rule_ok else "incorrect",
+            "verdict": "correct" if coverage >= 1.0 else "incorrect",
             "evaluation": "",
         }
 

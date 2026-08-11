@@ -16,6 +16,7 @@
 | 前端图表 | React Flow（@xyflow/react）+ Recharts |
 | 交付 | `docker compose up --build` |
 | 包管理 | Python → uv · JS → pnpm |
+| CLI 交互 | prompt_toolkit（scripts/cli_input.py：方向键选择题 + 行编辑回答题 + 输入边界净化） |
 
 ## 2. 仓库结构
 
@@ -41,6 +42,7 @@ learn-sys/
 ├── api/                     # FastAPI（薄层，只做序列化→转发→推流，Phase 3 挂载）
 │   └── routes/
 ├── scripts/                 # 组合根
+│   ├── cli_input.py         # CLI 交互输入层（prompt_toolkit：选择题方向键选择/回答题行编辑/非 TTY 回退/输入净化）
 │   ├── init_db.py           # 幂等知识库 loader（数据来自 data/seeds/，不内嵌数据）
 │   └── run_cli.py           # 会话 CLI：诊断→切片→逐主题教学→问答循环→降维
 ├── data/

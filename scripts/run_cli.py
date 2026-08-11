@@ -21,6 +21,7 @@ from dataclasses import asdict
 
 import structlog
 from dotenv import load_dotenv
+from scripts.cli_input import Choice, ask_choice, ask_text
 
 from core.agents.diagnose import diagnose_node
 from core.agents.feedback import feedback_node
@@ -174,14 +175,13 @@ async def teach_topic(
             else:
                 answer = "我还没完全学会，说不清楚。"
         else:
-            try:
-                if question.question_type == "choice":
-                    labels = "/".join(o[0] for o in question.options)
-                    answer = input(f"[你的作答]（输入选项字母 {labels}，如 A）：").strip()
-                else:
-                    answer = input("[你的作答]：").strip()
-            except EOFError:
-                answer = ""
+            if question.question_type == "choice":
+                choices = [
+                    Choice(label=opt, value=opt[0]) for opt in question.options
+                ]
+                answer = ask_choice(f"[你的作答] {question.prompt}", choices)
+            else:
+                answer = ask_text("[你的作答] ")
             if not answer:
                 print("\n[退出] 未作答，结束会话。")
                 break
@@ -199,6 +199,7 @@ async def teach_topic(
                     "question": asdict(question),
                     "answer": answer,
                     "rule_is_correct": grade.is_correct,
+                    "rule_coverage": grade.keyword_coverage,
                 },
                 provider=provider,
                 model=settings.feedback_model,

@@ -42,12 +42,26 @@ class LLMProvider:
         self._client = AsyncOpenAI(base_url=base_url, api_key=api_key, timeout=LLM_TIMEOUT)
         logger.info("llm_provider_ready", base_url=base_url, model=model)
 
+    @staticmethod
+    def _sanitize_text(text: str) -> str:
+        """清除孤立 surrogate（U+D800-DFFF）：粘贴文本可能带入，
+        json 序列化时会导致 utf-8 编码失败。替换为 U+FFFD 而非丢弃，
+        保留原始长度语义。"""
+        return "".join(
+            ch if not 0xD800 <= ord(ch) <= 0xDFFF else "\ufffd" for ch in text
+        )
+
     async def chat(self, messages: list[dict[str, str]], model: str | None = None, **kwargs) -> str:
         if self._extra_body is not None:
             kwargs.setdefault("extra_body", self._extra_body)
+        # 全链路净化：任何文本（学生作答/条目内容/API 返回）进入请求前
+        # 清除孤立 surrogate，防止编码异常中断整轮调用。
+        cleaned = [
+            {**m, "content": self._sanitize_text(str(m.get("content", "")))} for m in messages
+        ]
         resp = await self._client.chat.completions.create(
             model=model or self.model,
-            messages=cast(Iterable[ChatCompletionMessageParam], messages),
+            messages=cast(Iterable[ChatCompletionMessageParam], cleaned),
             **kwargs,
         )
         choice = resp.choices[0]
