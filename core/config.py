@@ -24,6 +24,7 @@ class Settings(BaseModel):
     diagnose_model: str | None = None
     generate_model: str | None = None
     review_model: str | None = None
+    feedback_model: str | None = None
 
     # 厂商私有请求字段（如 {"thinking": {"type": "disabled"}}），默认不发送
     llm_extra_body: dict | None = None
@@ -59,6 +60,7 @@ class Settings(BaseModel):
             diagnose_model=os.getenv("DIAGNOSE_MODEL") or None,
             generate_model=os.getenv("GENERATE_MODEL") or None,
             review_model=os.getenv("REVIEW_MODEL") or None,
+            feedback_model=os.getenv("FEEDBACK_MODEL") or None,
             llm_extra_body=json.loads(extra_body_raw) if extra_body_raw else None,
             database_path=os.getenv("DATABASE_PATH", "data/knowledge.db"),
             bge_model_path=os.getenv("BGE_MODEL_PATH", "data/bge-m3"),

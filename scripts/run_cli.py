@@ -17,11 +17,13 @@ import json
 import random
 import sqlite3
 from collections import defaultdict
+from dataclasses import asdict
 
 import structlog
 from dotenv import load_dotenv
 
 from core.agents.diagnose import diagnose_node
+from core.agents.feedback import feedback_node
 from core.assess import (
     GradeResult,
     build_feedback_message,
@@ -95,6 +97,9 @@ async def teach_topic(
     entries: list[KnowledgeEntry],
     difficulty_level: str,
     sim_rate: float | None,
+    *,
+    provider: LLMProvider,
+    settings: Settings,
 ) -> tuple[list[bool], dict]:
     """教一个主题：教学（图）→ 出题 → 作答 → 判分 → 决策，直到 advance/regress。
 
@@ -138,7 +143,7 @@ async def teach_topic(
                     wrong = [o[0] for o in question.options if not o.startswith(question.expected_label)]
                     answer = random.choice(wrong) if wrong else "Z"
             elif random.random() < sim_rate:
-                answer = "、".join(question.expected_keywords) + "。"
+                answer = topic.content
             else:
                 answer = "我还没完全学会，说不清楚。"
         else:
@@ -154,10 +159,30 @@ async def teach_topic(
                 print("\n[退出] 未作答，结束会话。")
                 break
         grade: GradeResult = grade_answer(question, answer)
-        correctness.append(grade.is_correct)
-        print(f"[反馈] {'✓ 正确' if grade.is_correct else '✗ 不完整'} "
+
+        # feedback：确定性快路径 + LLM 复核/评估（fail-closed，LLM 失败回退规则）
+        is_correct = grade.is_correct
+        evaluation = build_feedback_message(grade, question)
+        need_llm = (question.question_type == "answer" and grade.keyword_coverage >= 0.6) or (
+            question.question_type == "choice" and not grade.is_correct
+        )
+        if need_llm:
+            fb = await feedback_node(
+                {
+                    "question": asdict(question),
+                    "answer": answer,
+                    "rule_is_correct": grade.is_correct,
+                },
+                provider=provider,
+                model=settings.feedback_model,
+            )
+            is_correct = fb["verdict"] == "correct"
+            if fb["evaluation"]:
+                evaluation = fb["evaluation"]
+        correctness.append(is_correct)
+        print(f"[反馈] {'✓ 正确' if is_correct else '✗ 不完整'} "
               f"（覆盖率 {grade.keyword_coverage:.0%}）")
-        print(build_feedback_message(grade, question))
+        print(evaluation)
 
         decision, mastery = decide_next_step(correctness)
         logger.info(
@@ -241,7 +266,13 @@ async def main() -> None:
         entry = next(e for e in entries if e.id == topic.entry_id)
 
         correctness, final_state = await teach_topic(
-            teach_graph, entry, entries, diag["difficulty_level"], args.sim
+            teach_graph,
+            entry,
+            entries,
+            diag["difficulty_level"],
+            args.sim,
+            provider=provider,
+            settings=settings,
         )
         mastery_history[topic.entry_id].extend(correctness)
 
