@@ -37,14 +37,18 @@ GENERATE_PROMPT = """你是大数据分析领域的培训讲师。根据以下�
 {difficulty_instruction}
 上轮审核反馈（如有，请逐条回应：采纳并修正，或说明反驳理由）：{feedback}
 {uncovered_section}
-可引用的知识条目（每条有 id、title、content）：
-{entries}
+【本次教学主题条目】（必须围绕它讲，这是本轮唯一要教透的内容）：
+{anchor_entry}
+
+【背景条目】（仅作理解背景，不得展开讲解、不得作为讲授主体）：
+{aux_entries}
 
 要求：
 1. 生成 3-5 条论断，每条是一段完整的教学内容（50-100 字）。
 2. 每条论断必须标注 evidence_ids：列出支撑该论断的知识条目 id 列表，至少一条。
 3. 内容严格基于条目原文，不编造不在条目中的知识点。
 4. 根据画像调整难度和举例风格。
+5. 严禁讲解背景条目中的知识点——主题条目里没有的内容一律不教。
 
 严格按 JSON 输出：{{"draft": [{{"claim_index": 1, "text": "...", "evidence_ids": ["..."]}}]}}"""
 
@@ -53,12 +57,25 @@ async def generate_node(
     state: AgentState, *, provider: LLMProvider, model: str | None = None
 ) -> dict:
     retrieved = state.get("retrieved_entries", [])
+    anchor = state.get("anchor_entry")
     uncovered = state.get("uncovered_gaps", [])
-    entries_text = json.dumps(
-        [{"id": e.id, "title": e.title, "content": e.content} for e in retrieved],
-        ensure_ascii=False,
-        indent=2,
-    )
+
+    if anchor is not None:
+        anchor_entry_text = json.dumps(
+            {"id": anchor.id, "title": anchor.title, "content": anchor.content},
+            ensure_ascii=False,
+            indent=2,
+        )
+        aux_entries = [e for e in retrieved if e.id != anchor.id]
+        aux_text = json.dumps(
+            [{"id": e.id, "title": e.title, "content": e.content} for e in aux_entries],
+            ensure_ascii=False,
+            indent=2,
+        )
+    else:
+        anchor_entry_text = "（未指定，可从下方条目中自行选择教学主题）"
+        aux_text = "（无）"
+
     uncovered_section = (
         "以下盲区知识库未覆盖，必须在讲义中明确标注「知识库未覆盖，建议补充学习」，严禁编造其内容："
         + json.dumps(uncovered, ensure_ascii=False)
@@ -78,7 +95,8 @@ async def generate_node(
                     ),
                     feedback=state.get("last_review_feedback", ""),
                     uncovered_section=uncovered_section,
-                    entries=entries_text,
+                    anchor_entry=anchor_entry_text,
+                    aux_entries=aux_text,
                 ),
             }
         ],

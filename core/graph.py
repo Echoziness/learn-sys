@@ -15,6 +15,7 @@
 
 import asyncio
 from functools import partial
+from typing import Protocol
 
 import structlog
 from langgraph.graph import END, START, StateGraph
@@ -22,8 +23,8 @@ from langgraph.graph import END, START, StateGraph
 from core.agents import generate_node, review_node
 from core.config import Settings
 from core.llm import LLMProvider
-from core.retrieval import Retriever
-from core.state import AgentState
+from core.retrieval import GapSearchResult, Retriever
+from core.state import AgentState, RetrievedEntry
 
 logger = structlog.get_logger()
 
@@ -31,15 +32,43 @@ logger = structlog.get_logger()
 DIFFICULTY_CAP: dict[str, int] = {"beginner": 2, "intermediate": 3, "advanced": 5}
 
 
+class SearchRetriever(Protocol):
+    """检索最小接口：测试可用 Fake 注入，避免依赖真实 DB/BGE。"""
+
+    def search_gaps(
+        self, gaps: list[str], top_k: int = 5, max_difficulty: int | None = None
+    ) -> GapSearchResult: ...
+
+
 async def retrieve_node(
-    state: AgentState, *, retriever: Retriever, top_k: int
+    state: AgentState, *, retriever: SearchRetriever, top_k: int
 ) -> dict:
     gaps = state.get("gaps", [])
     level = state.get("difficulty_level", "beginner")
     cap = DIFFICULTY_CAP.get(level, 2)
+
+    # 锚定条目：逐主题教学时，当前主题条目必须进入教学上下文，检索只作补充。
+    # 否则语义相近的邻域条目会带偏本轮教学（见 AGENTS.md 教学聚焦约束）。
+    anchor = state.get("anchor_entry")
+    anchor_entries: list[RetrievedEntry] = []
+    if anchor is not None:
+        anchor_entries = [
+            RetrievedEntry(
+                id=anchor.id,
+                title=anchor.title,
+                content=anchor.content,
+                score=1.0,
+            )
+        ]
+
     result = await asyncio.to_thread(retriever.search_gaps, gaps, top_k, max_difficulty=cap)
+    seen = {e.id for e in anchor_entries}
+    merged = [
+        *anchor_entries,
+        *[e for e in result.entries if e.id not in seen],
+    ]
     return {
-        "retrieved_entries": result.entries,
+        "retrieved_entries": merged,
         "uncovered_gaps": result.uncovered_gaps,
     }
 

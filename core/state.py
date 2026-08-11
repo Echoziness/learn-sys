@@ -13,6 +13,8 @@ from typing import Annotated, Literal, TypedDict
 
 from pydantic import BaseModel, Field
 
+from core.plan import KnowledgeEntry
+
 
 class LearnerProfile(BaseModel):
     background: dict
@@ -66,6 +68,7 @@ class AgentState(TypedDict, total=False):
     difficulty_level: str  # beginner / intermediate / advanced——检索难度闸门 + 生成提示强度
 
     # retrieve
+    anchor_entry: KnowledgeEntry  # 逐主题教学的锚定条目（当前主题本体），强制进上下文
     retrieved_entries: list[RetrievedEntry]
     uncovered_gaps: list[str]  # 检索置信度不足，生成时必须声明"知识库未覆盖"而非编造
 

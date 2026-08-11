@@ -109,6 +109,7 @@ async def teach_topic(
         state: AgentState = {
             "learner_id": "session",
             "gaps": [topic.title],
+            "anchor_entry": topic,
             "difficulty_level": difficulty_level,
             "review_round": 0,
         }
