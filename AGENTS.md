@@ -135,6 +135,7 @@ diagnose（LLM 一次）→ plan（确定性切片：gap→条目匹配 + 前置
 | 模拟学生全错、永远降维 | sim 模式"答对"的答案是不含关键词的占位文本，被 `grade_answer` 判错 | 答对时给出"、".join(expected_keywords) 的答案 |
 | CJK 检索/匹配失配（"聚合查询"匹配不到） | 分词没在 CJK 字符间切分，中文短语成一个整词 | `plan._tokenize` / `assess._tokens` / `retrieval.segment_cjk` 三处必须同语义逐字切分 |
 | LLM 输出校验失败重试后仍抛错 | `chat_validated` 重试只喂错误信息，无修复提示 | 重试消息带 Pydantic 错误详情，仍失败显式抛 `LLMOutputError`，禁止静默降级 |
+| 选择题输入 A 判错（用户实测） | 中文输入法全角字母（U+FF21）或粘贴带 BOM/零宽字符，`.upper()` 不归一化 | `assess._normalize_answer`：全角→半角 + 去零宽字符，choice 判分前归一化（含回归测试） |
 | 种子关键词判分失配（如 SQL-002~005 的 keyword "SQL"） | 写条目时只检查中文关键词，英文关键词字符（如 SQL 的 q）没进 content | 关键词去空格后全部字符必须出现在 content（英文词同样校验），`tests/test_seeds.py` 全量兜底 |
 | 旧库重跑 init_db 缺列崩 SQL（schema 变更后） | `CREATE TABLE IF NOT EXISTS` 不会给已存在表补列 | 幂等迁移：PRAGMA table_info 查列，缺则 `ALTER TABLE ADD COLUMN`（见 `init_db.migrate_knowledge_type`） |
 

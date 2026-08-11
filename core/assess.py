@@ -128,6 +128,20 @@ def _tokens(text: str) -> tuple[str, ...]:
     return tuple(t for t in "".join(out).split() if t)
 
 
+def _normalize_answer(text: str) -> str:
+    """作答归一化：全角字母/数字→半角（中文输入法常见）、去零宽字符与空白。"""
+    out: list[str] = []
+    for ch in text:
+        code = ord(ch)
+        if 0xFF01 <= code <= 0xFF5E:
+            out.append(chr(code - 0xFEE0))
+        elif code in (0xFEFF, 0x200B, 0x200C, 0x200D):
+            continue
+        else:
+            out.append(ch)
+    return "".join(out).strip().upper()
+
+
 def grade_answer(question: Question, answer: str, *, min_coverage: float = 0.6) -> GradeResult:
     """按题型判分。fail-closed：无 expected 或无作答 → 判错，绝不判对。
 
@@ -144,7 +158,7 @@ def grade_answer(question: Question, answer: str, *, min_coverage: float = 0.6) 
         )
 
     if question.question_type == "choice":
-        is_correct = answer.strip().upper() == question.expected_label
+        is_correct = _normalize_answer(answer) == question.expected_label
         return GradeResult(
             is_correct=is_correct,
             matched=(),

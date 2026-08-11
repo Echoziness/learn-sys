@@ -104,6 +104,19 @@ def test_choice_grade_correct_label():
     assert grade_answer(q, " A ").is_correct  # 容忍空白
 
 
+def test_choice_grade_fullwidth_label():
+    """中文输入法的全角字母（U+FF21）必须判对。"""
+    q = build_question(_entry(), distractors=[_entry(eid="D1", keywords=("甲", "乙"))], mastery=0.0)
+    assert grade_answer(q, "Ａ").is_correct
+    assert grade_answer(q, "Ａ ").is_correct
+
+
+def test_choice_grade_bom_prefix():
+    """粘贴内容带零宽/BOM 字符（U+FEFF）时仍判对。"""
+    q = build_question(_entry(), distractors=[_entry(eid="D1", keywords=("甲", "乙"))], mastery=0.0)
+    assert grade_answer(q, "\ufeffA").is_correct
+
+
 def test_choice_grade_wrong_label():
     q = build_question(_entry(), distractors=[_entry(eid="D1", keywords=("甲", "乙"))], mastery=0.0)
     g = grade_answer(q, "B")
