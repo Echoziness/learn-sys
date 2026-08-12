@@ -39,6 +39,12 @@ def test_high_mastery_builds_answer():
     assert q.options == ()
 
 
+def test_floor_type_answer_forces_answer_at_low_mastery():
+    """题型单向推进：floor_type=answer 时即使掌握度很低也出回答题。"""
+    q = build_question(_entry(), mastery=0.0, floor_type="answer")
+    assert q.question_type == "answer"
+
+
 def test_choice_has_correct_and_distractors():
     others = [_entry(eid="D1", title="其他A", keywords=("甲", "乙")),
               _entry(eid="D2", title="其他B", keywords=("丙", "丁")),

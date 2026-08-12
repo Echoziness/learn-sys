@@ -80,10 +80,11 @@ web/ ──(SSE)──→ api/ ──→ core/ ──→ data/
 
 ```text
 diagnose（LLM 一次，输出 gap_ids）→ plan（确定性切片：ID 投影 + 前置链闭包 + 拓扑排序）
-  → 逐主题教学子图（retrieve[anchor 锚定] → generate → review）
-  → question/assess（出题：掌握度驱动题型，answer 题干由 LLM 生成）
+  → 逐主题教学子图（retrieve[anchor 锚定] → generate → review；retry 轮错因回流进 generate）
+  → question/assess（出题：题型单向推进，answer 题干由 LLM 生成，深度以本轮教学内容为上限）
   → 学生作答 → answer_pipeline（规则判分 → LLM 复核/评估 → 掌握度更新）
-  → 决策：advance（下一主题）/ retry（重教）/ regress（回前置主题降维）
+  → 决策：advance（下一主题）/ retry（重教：错因回流 + 题目重生成）/ regress（回前置主题降维）
+  → answer 失败后下轮先出脚手架选择题（镜像学生错误理解，答对回 answer，不计入掌握度历史）
 ```
 
 - 交流结果只约束教学执行层，永不反向修改课程本体与切片；
@@ -97,26 +98,30 @@ diagnose（LLM 一次，输出 gap_ids）→ plan（确定性切片：ID 投影 
 |---|---|---|
 | diagnose | `learner_profile`, `test_results` | `gap_ids`（收敛到本体目录）, `gaps`, `profile_summary`, `difficulty_level` |
 | retrieve | `gaps`, `difficulty_level`, `anchor_entry` | `retrieved_entries`, `uncovered_gaps` |
-| generate | `retrieved_entries`, `anchor_entry`, `profile_summary`, `outline`, `last_review_feedback`, `uncovered_gaps`, `difficulty_level` | `draft`, `cited_entries` |
+| generate | `retrieved_entries`, `anchor_entry`, `profile_summary`, `outline`, `last_review_feedback`, `retry_context`, `uncovered_gaps`, `difficulty_level` | `draft`, `cited_entries` |
 | review | `draft`, `cited_entries`, `review_round` | `review_history`(append), `review_round`, `last_review_feedback` |
 | plan（纯函数） | —（不入 state，CLI 直接调用） | — |
 | assess（纯函数） | 条目（KnowledgeEntry）+ 当前掌握度 | 题目（按掌握度选题型） |
 | feedback（LLM 节点） | 题目、作答、规则判分结果 | verdict / evaluation（CLI 层用） |
-| question（LLM 节点） | 条目（id/title/content/keywords） | 题干 + expected（服务端校验字符出自 content） |
+| question（LLM 节点） | 条目（id/title/content/keywords）+ taught_claims（本轮教学论断） | 题干 + expected（服务端校验字符出自 content） |
 | answer_pipeline（服务函数） | 题目、作答、掌握度历史 | AnswerOutcome（判分/评估/决策，CLI 与 Web 共用） |
 
 每个节点只读写表内 key，越界即 code review 驳回。隔离红线：review 禁止任何画像字段（含 `profile_summary`）；generate 只读 `profile_summary` 摘要，禁止 `learner_profile` 原始模型；对话日志永不进生成上下文。
 
 ### 3.6 关键 schema 约束
 
-- 生成 Agent 输出每条论断必含 `evidence_ids`（引用知识条目 ID 的列表）；
-- 审核 Agent 输出每条论断的裁决 = `supported | partially_supported | unsupported`（NLI 三分类）；
+- 生成 Agent 输出每条论断必含 `evidence_ids`（引用知识条目 ID 的列表）与 `claim_type`：`core`（条目覆盖层，严格证据链）/ `extension`（错因扩展层，仅重教轮出现，针对学生错因的应用级讲解，允许推导与示例但不得引入条目之外的新概念）；
+- 审核 Agent 输出每条论断的裁决 = `supported | partially_supported | unsupported`（NLI 三分类）；**分级标准**：core 论断必须被条目原文明确支持；extension 论断降为"概念一致 + 推导自洽"（防幻觉锚点不放松——evidence_ids 照常校验，只是裁决标准分级）；
 - 所有 agent 间消息用 Pydantic BaseModel / TypedDict 定义；
 - 掌握度数学只在 `core/mastery.py`（纯函数：recency-weighted + 置信度封顶 + 门槛 0.7 + 连错 2 次降维），新增教学数值必须落在此处，禁止散落各节点；
 - 出题/判分只在 `core/assess.py`（fail-closed：无 expected 关键词即判错，绝不判对）；expected 永不进学生视野；
 - 题型仅两种且与知识类型解耦：choice（选择题，识别式）与 answer（回答题，回忆式），由掌握度驱动（<0.5 选择 / ≥0.5 回答，对齐 PRD 阶梯）；选择题干扰项从其他条目关键词确定性构造（不调 LLM），判分只认选项标签（贴全文不算对）；
-- answer 判分两级：规则预筛（覆盖率 <0.6 直接判错不调 LLM）→ 覆盖达标送 LLM 复核（`core/agents/feedback.py`，可识别关键词罗列/逻辑错误并输出教学评估）；LLM 失败回退规则时要求关键词全覆盖（coverage=1.0）才判对——低阈值只是复核存在时的预筛，不能单独放行；
+- **题型单向推进**：进入 answer 深度后不因单次失误降回泛化 choice（识别题会掩盖真实理解状态）——`build_question(floor_type=...)` 强制；真正降级由"连续 2 次答错 → regress"触发；
+- **脚手架选择题**：answer 失败后下轮先出脚手架（`core/agents/question.py` 的 `build_scaffold_distractors`）——正确项=条目 keywords，干扰项 LLM 生成且**首项必须是学生作答中的典型错误理解镜像**（对比发现自己的问题），LLM 失败回退确定性干扰项；脚手架答对回 answer，**答对不计入掌握度历史**（不打断连续错降维计数），答错计一次错；
+- **评估与裁决分离**：answer 题总是送 LLM 评估（覆盖率不足的作答最有教学价值，规则预筛只降级裁决不降级评估）；fail-closed 收口——LLM 判 correct 但规则覆盖率 <0.6 时维持判错且评估不采用 LLM 的（防放水+防"答对了"误导）；
+- answer 判分两级：规则预筛（覆盖率 <0.6 直接判错，裁决不放松）→ 覆盖达标送 LLM 复核（`core/agents/feedback.py`，可识别关键词罗列/逻辑错误并输出教学评估）；LLM 复核标准已校准——只有概念错误/漏答题目关键要求/答非所问才判 partial/incorrect，措辞不精确、换说法但意思正确判 correct；LLM 失败回退规则时要求关键词全覆盖（coverage=1.0）才判对；
 - 回答题题干与判分要点由 LLM 一起生成（`core/agents/question.py`，场景化提问，禁止问条目之外内容）；expected 服务端校验——字符必须全部出自条目 content（防 LLM 编造，`validate_expected_keywords` 纯函数可单测），校验失败回退条目 keywords；按 entry_id 缓存 (题干, expected) 对；
+- **出题深度契约**：回答题必须注入本轮教学论断（`taught_claims`）作为出题上限——学生只需运用已教概念即可作答，禁止问教学内容未覆盖的深度（防"教得浅、考得深"）；retry 重教后条目教学内容加深，该 entry 的题目缓存必须失效重生成；
 - LLM 输出截断防护：`core/llm.py` 检查 finish_reason=length 显式抛 `LLMOutputError`（JSON 必然残缺，不做无意义重试）；
 - 知识条目必带 `knowledge_type`（`memory` 事实/定义/术语 / `concept` 概念与关系 / `procedure` 步骤技能，枚举在 `scripts/init_db.py.KnowledgeType`，DB 列 DEFAULT 'concept'），描述知识本体（影响教学方式/门槛/复习节奏），不绑定题型，core/plan.KnowledgeEntry 同持此字段（默认 concept）；
 - 新增种子条目 content 控制在 50-100 字（代码片段算字符），且每个关键词去空格后的全部字符必须出现在 content 里（判分靠子串，`tests/test_seeds.py` 全量校验）；
@@ -150,7 +155,8 @@ diagnose（LLM 一次，输出 gap_ids）→ plan（确定性切片：ID 投影 
 | 选择题输入 A 判错（用户实测） | 中文输入法全角字母（U+FF21）或粘贴带 BOM/零宽字符，`.upper()` 不归一化 | `assess._normalize_answer`：全角→半角 + 去零宽字符，choice 判分前归一化（含回归测试） |
 | 种子关键词判分失配（如 SQL-002~005 的 keyword "SQL"） | 写条目时只检查中文关键词，英文关键词字符（如 SQL 的 q）没进 content | 关键词去空格后全部字符必须出现在 content（英文词同样校验），`tests/test_seeds.py` 全量兜底 |
 | 旧库重跑 init_db 缺列崩 SQL（schema 变更后） | `CREATE TABLE IF NOT EXISTS` 不会给已存在表补列 | 幂等迁移：PRAGMA table_info 查列，缺则 `ALTER TABLE ADD COLUMN`（见 `init_db.migrate_knowledge_type`） |
-| 学生作答含孤立 surrogate 导致 feedback LLM 编码失败（utf-8 codec surrogates not allowed） | 粘贴文本带入 U+D800-DFFF，json 序列化/编码崩 | 双层防护：`scripts/cli_input._sanitize`（输入边界）+ `core/llm.LLMProvider._sanitize_text`（请求前纵深防御，API 返回侧同样可能带） |
+| 学生作答含孤立 surrogate 导致 feedback LLM 编码失败（utf-8 codec surrogates not allowed） | 粘贴文本带入 U+D800-DFFF，json 序列化/编码崩 | 双层防护：`scripts/cli_input._sanitize`（输入边界）+ `core/llm.LLMProvider._sanitize_text`（请求与响应侧都净化，纵深防御） |
+| 每次 LLM 调用 15-60s（思考模式默认开启） | `deepseek-v4-flash/pro` 的 thinking 默认 enabled——先推理后输出；且官方不建议"思考 + JSON 模式"同开（response_format=json_object），与偶发 JSON 解析失败相关 | `.env` 配 `LLM_EXTRA_BODY={"thinking": {"type": "disabled"}}`——本系统所有调用都是 JSON 输出，思考无收益纯延迟 |
 
 ## 7. 开发模式（AI 生成代码遵循以下流程）
 

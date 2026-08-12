@@ -16,6 +16,7 @@ import asyncio
 import json
 import random
 import sqlite3
+import time
 from collections import defaultdict
 
 import structlog
@@ -23,7 +24,7 @@ from dotenv import load_dotenv
 from scripts.cli_input import Choice, ask_choice, ask_text
 
 from core.agents.diagnose import diagnose_node
-from core.agents.question import question_node
+from core.agents.question import build_scaffold_distractors, question_node
 from core.answer_pipeline import process_answer
 from core.assess import (
     Question,
@@ -93,6 +94,64 @@ def print_section(title: str) -> None:
     print(f"\n{'=' * 60}\n{title}\n{'=' * 60}")
 
 
+async def with_llm_progress(label: str, coro):
+    """包裹一次 LLM 调用：开始前给阶段提示（防误以为卡死），结束后报耗时。"""
+    start = time.monotonic()
+    print(f"\n[{label}] 正在调用 LLM（约 10-60s，请稍候）…")
+    result = await coro
+    print(f"[{label}] 完成（{time.monotonic() - start:.1f}s）")
+    return result
+
+
+async def build_scaffold_question(
+    topic: KnowledgeEntry,
+    failed: dict,
+    entries: list[KnowledgeEntry],
+    *,
+    provider: LLMProvider,
+    settings: Settings,
+) -> Question:
+    """脚手架选择题：回答题失败后的中间台阶。
+
+    正确项 = 条目 keywords（服务端构造，判分只认标签）；干扰项由 LLM 生成
+    （首项为学生上一轮作答中的典型错误理解镜像，帮助学生对比发现自己的问题）；
+    LLM 失败回退确定性干扰项（其他条目关键词，fail-closed）。
+    """
+    correct_text = "、".join(topic.keywords[:6]) or topic.title
+    dists: list[str] = []
+    try:
+        dists = await with_llm_progress(
+            "脚手架",
+            build_scaffold_distractors(
+                provider,
+                failed["prompt"],
+                failed["answer"],
+                correct_text,
+                model=settings.question_model,
+            ),
+        )
+    except Exception:
+        logger.warning("scaffold_llm_failed_fallback_distractors", entry_id=topic.id)
+    if not dists:
+        for other in entries:
+            text = "、".join(other.keywords[:6])
+            if text and text != correct_text and text not in dists:
+                dists.append(text)
+                if len(dists) >= 3:
+                    break
+    labels = "ABCD"
+    options = [f"A. {correct_text}", *[f"{labels[i]}. {t}" for i, t in enumerate(dists, 1)]]
+    return Question(
+        question_id=f"q_{topic.id}_scaffold",
+        entry_id=topic.id,
+        prompt=f"关于上一题（{failed['prompt']}），以下哪个选项是正确的做法？",
+        question_type="choice",
+        expected_keywords=(),
+        options=tuple(options),
+        expected_label="A",
+    )
+
+
 async def teach_topic(
     graph,
     topic: KnowledgeEntry,
@@ -111,6 +170,10 @@ async def teach_topic(
     correctness: list[bool] = []
     round_no = 0
     final: dict = {}
+    retry_context = ""
+    reached_answer = False  # 题型单向推进：进入回答深度后不再降回选择题
+    scaffold_pending = False  # 回答题失败 → 下一轮先出脚手架选择题
+    failed_question: dict = {}  # 失败的回答题（题目+作答），供脚手架镜像干扰项
     while True:
         round_no += 1
         if max_rounds and round_no > max_rounds:
@@ -124,11 +187,14 @@ async def teach_topic(
             "difficulty_level": difficulty_level,
             "review_round": 0,
         }
-        final = await graph.ainvoke(state)
+        if retry_context:
+            state["retry_context"] = retry_context
+        final = await with_llm_progress("教学", graph.ainvoke(state))
 
         draft = final.get("draft", [])
         for claim in draft:
-            print(f"\n{claim.text}")
+            tag = " [错因扩展]" if claim.claim_type == "extension" else ""
+            print(f"\n{claim.text}{tag}")
             print(f"  └─ 来源: {', '.join(claim.evidence_ids)}")
         reviews = final.get("review_history", [])
         bad = [r for r in reviews if r.verdict != "supported"]
@@ -137,36 +203,54 @@ async def teach_topic(
         else:
             print("\n[审核] 全部论断通过")
 
-        question = build_question(topic, distractors=entries, mastery=compute_mastery(correctness))
-        if question.question_type == "answer" and topic.id not in _question_cache:
-            try:
-                q = await question_node(
-                    {
-                        "entry": {
-                            "id": topic.id,
-                            "title": topic.title,
-                            "content": topic.content,
-                            "keywords": topic.keywords,
-                        }
-                    },
-                    provider=provider,
-                    model=settings.question_model,
-                )
-                if q["question"]:
-                    _question_cache[topic.id] = (q["question"], tuple(q["expected_keywords"]))
-            except Exception:
-                logger.warning("question_llm_failed_fallback_template", entry_id=topic.id)
-        cached = _question_cache.get(topic.id)
-        if question.question_type == "answer" and cached is not None:
-            prompt, expected = cached
-            question = Question(
-                question_id=question.question_id,
-                entry_id=question.entry_id,
-                prompt=prompt,
-                question_type=question.question_type,
-                # LLM 校验通过的要点优先；为空（校验全失败）回退条目 keywords。
-                expected_keywords=expected or question.expected_keywords,
+        if scaffold_pending and failed_question:
+            question = await build_scaffold_question(
+                topic, failed_question, entries, provider=provider, settings=settings
             )
+            scaffold_pending = False  # 已出题，结果决定是否再置位
+            print("\n[脚手架] 上一题回答不理想——先做一个选择题确认关键点，再回来回答。")
+        else:
+            question = build_question(
+                topic,
+                distractors=entries,
+                mastery=compute_mastery(correctness),
+                floor_type="answer" if reached_answer else None,
+            )
+            if question.question_type == "answer":
+                reached_answer = True
+            if question.question_type == "answer" and topic.id not in _question_cache:
+                try:
+                    q = await with_llm_progress(
+                        "出题",
+                        question_node(
+                            {
+                                "entry": {
+                                    "id": topic.id,
+                                    "title": topic.title,
+                                    "content": topic.content,
+                                    "keywords": topic.keywords,
+                                },
+                                "taught_claims": [c.text for c in draft],
+                            },
+                            provider=provider,
+                            model=settings.question_model,
+                        ),
+                    )
+                    if q["question"]:
+                        _question_cache[topic.id] = (q["question"], tuple(q["expected_keywords"]))
+                except Exception:
+                    logger.warning("question_llm_failed_fallback_template", entry_id=topic.id)
+            cached = _question_cache.get(topic.id)
+            if question.question_type == "answer" and cached is not None:
+                prompt, expected = cached
+                question = Question(
+                    question_id=question.question_id,
+                    entry_id=question.entry_id,
+                    prompt=prompt,
+                    question_type=question.question_type,
+                    # LLM 校验通过的要点优先；为空（校验全失败）回退条目 keywords。
+                    expected_keywords=expected or question.expected_keywords,
+                )
         print(f"\n[检验] {question.prompt}")
         for opt in question.options:
             print(f"  {opt}")
@@ -193,14 +277,21 @@ async def teach_topic(
                 print("\n[退出] 未作答，结束会话。")
                 break
 
-        outcome = await process_answer(
-            provider,
-            question,
-            answer,
-            correctness,
-            model=settings.feedback_model,
+        outcome = await with_llm_progress(
+            "判分",
+            process_answer(
+                provider,
+                question,
+                answer,
+                correctness,
+                model=settings.feedback_model,
+            ),
         )
-        correctness.append(outcome.is_correct)
+        # 脚手架轮不计入掌握度历史：答对=识别通过（教学台阶，非测评），
+        # 不打断"连续 2 次回答题失败 → 降维"的计数；答错则计一次错（识别都没过）。
+        is_scaffold = question.question_id.endswith("_scaffold")
+        if not is_scaffold or not outcome.is_correct:
+            correctness.append(outcome.is_correct)
         print(f"[反馈] {'✓ 正确' if outcome.is_correct else '✗ 不完整'} "
               f"（覆盖率 {outcome.grade.keyword_coverage:.0%}）")
         print(outcome.evaluation)
@@ -222,7 +313,28 @@ async def teach_topic(
         if decision == "regress":
             print("\n[决策] 连续答错，判定地基未打牢——回前置主题重新教。")
             break
-        print("\n[决策] 继续本主题：换个方式再讲一遍。")
+        print("\n[决策] 继续本主题：针对你的作答重新讲一遍。")
+        # 脚手架状态机：回答题失败 → 下轮出脚手架选择题；脚手架答对 → 回回答题
+        if question.question_type == "answer" and not outcome.is_correct:
+            scaffold_pending = True
+            failed_question = {"prompt": question.prompt, "answer": answer}
+        elif question.question_id.endswith("_scaffold"):
+            scaffold_pending = not outcome.is_correct  # 答对=注意到问题，回回答题
+        # 错因回流：下一轮教学直接回应本轮作答的偏差
+        if question.question_type == "choice" and outcome.is_correct:
+            ctx_hint = (
+                "上一轮为选择题且回答正确（识别已通过）——本次重教不得复读基础定义，"
+                "请向应用深度推进：讲概念的实际应用场景、常见误解与易错点。"
+            )
+        else:
+            ctx_hint = ""
+        retry_context = (
+            f"{ctx_hint}\n题目：{question.prompt}\n"
+            f"学生作答：{answer}\n"
+            f"评估：{outcome.evaluation}"
+        ).strip("\n")
+        # 教学加深后题目必须重新生成（旧题基于旧教学内容，深度契约失效）
+        _question_cache.pop(topic.id, None)
 
     return correctness, final
 
@@ -263,11 +375,14 @@ async def main() -> None:
 
     print_section("诊断")
     catalog = [{"id": e.id, "title": e.title} for e in entries]
-    diag = await diagnose_node(
-        {"learner_profile": profile, "test_results": []},
-        provider=provider,
-        model=settings.diagnose_model,
-        entry_catalog=catalog,
+    diag = await with_llm_progress(
+        "诊断",
+        diagnose_node(
+            {"learner_profile": profile, "test_results": []},
+            provider=provider,
+            model=settings.diagnose_model,
+            entry_catalog=catalog,
+        ),
     )
     print(f"画像摘要: {diag['profile_summary']}")
     gap_titles = [c["title"] for c in catalog if c["id"] in diag["gap_ids"]]

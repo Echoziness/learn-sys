@@ -43,14 +43,20 @@ async def process_answer(
 
     correctness_history 为调用方持有的该主题历史（本函数只读，
     返回的 decision 依赖追加本回合结果后的完整历史）。
+
+    评估与裁决分离（2026-08-12）：
+    - answer 题总是送 LLM 评估——覆盖率不足的学生作答往往最需要
+      教学点评（概念错误比"答非所问"更有教学价值），规则预筛只降级裁决；
+    - fail-closed 收口：LLM 判 correct 但规则覆盖率不足（< min_coverage）时
+      维持判错——关键词覆盖是放行的底线，LLM 无权绕过（防 LLM 放水）。
     """
     grade = grade_answer(question, answer, min_coverage=min_coverage)
 
-    # LLM 复核触发条件：answer 题覆盖达标（可能答非所问/罗列/逻辑错）；
-    # choice 题选错（需要解释错因）。
+    # LLM 复核触发条件：answer 题总是复核（评估价值 > 裁决价值）；
+    # choice 题仅在答错时（需要解释错因）。
     is_correct = grade.is_correct
     evaluation = build_feedback_message(grade, question)
-    need_llm = (question.question_type == "answer" and grade.keyword_coverage >= min_coverage) or (
+    need_llm = question.question_type == "answer" or (
         question.question_type == "choice" and not grade.is_correct
     )
     llm_reviewed = False
@@ -77,9 +83,15 @@ async def process_answer(
             model=model,
         )
         llm_reviewed = True
-        is_correct = fb["verdict"] == "correct"
-        if fb["evaluation"]:
-            evaluation = fb["evaluation"]
+        verdict_correct = fb["verdict"] == "correct"
+        if question.question_type == "answer" and verdict_correct and grade.keyword_coverage < min_coverage:
+            # fail-closed：覆盖不足时 LLM 无权放行，维持规则判错；
+            # 评估也不采用 LLM 的（避免"答对了"的误导性反馈）。
+            is_correct = False
+        else:
+            is_correct = verdict_correct
+            if fb["evaluation"]:
+                evaluation = fb["evaluation"]
 
     history = [*correctness_history, is_correct]
     decision, mastery = decide_next_step(history)

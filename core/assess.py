@@ -60,12 +60,17 @@ def build_question(
     *,
     distractors: list[KnowledgeEntry] | None = None,
     mastery: float = 0.0,
+    floor_type: str | None = None,
 ) -> Question:
-    """按掌握度分发题型：低掌握度选择题（脚手架），高掌握度回答题。"""
+    """按掌握度分发题型：低掌握度选择题（脚手架），高掌握度回答题。
+
+    floor_type="answer" 时强制回答题——题型单向推进：一旦进入回答深度，
+    不因单次失误降回选择题（识别题会掩盖真实理解状态，掌握度震荡的根因）。
+    """
     qid = f"q_{entry.id}"
-    if mastery < CHOICE_MASTERY_THRESHOLD:
-        return _build_choice(qid, entry, distractors or [])
-    return _build_answer(qid, entry)
+    if floor_type == "answer" or mastery >= CHOICE_MASTERY_THRESHOLD:
+        return _build_answer(qid, entry)
+    return _build_choice(qid, entry, distractors or [])
 
 
 def _build_answer(qid: str, entry: KnowledgeEntry) -> Question:
