@@ -6,7 +6,7 @@ LLM 输出统一经 chat_validated 做 Pydantic 校验，失败带修复提示�
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import AsyncIterator, Iterable
 from typing import TypeVar, cast
 
 import structlog
@@ -74,7 +74,39 @@ class LLMProvider:
         content = choice.message.content
         if content is None:
             raise LLMOutputError("LLM 返回空 content")
-        return content
+        # 响应侧同样可能带孤立 surrogate（厂商返回异常文本），纵深防御。
+        return self._sanitize_text(content)
+
+    async def chat_stream(
+        self, messages: list[dict[str, str]], model: str | None = None, **kwargs
+    ) -> AsyncIterator[str]:
+        """流式调用：逐 token 产出内容增量（Web SSE 转发用）。
+
+        注意：流式输出不能保证 JSON 完整性——消费方需自行收集全文并校验
+        （Web 端收集后仍走 chat_validated 同款 schema 校验）。
+        """
+        if self._extra_body is not None:
+            kwargs.setdefault("extra_body", self._extra_body)
+        cleaned = [
+            {**m, "content": self._sanitize_text(str(m.get("content", "")))} for m in messages
+        ]
+        stream = await self._client.chat.completions.create(
+            model=model or self.model,
+            messages=cast(Iterable[ChatCompletionMessageParam], cleaned),
+            stream=True,
+            **kwargs,
+        )
+        async for chunk in stream:
+            if not chunk.choices:
+                continue
+            choice = chunk.choices[0]
+            if choice.finish_reason == "length":
+                raise LLMOutputError(
+                    "LLM 输出被 max_tokens 截断（finish_reason=length），需要增大 max_tokens 或精简输出"
+                )
+            delta = choice.delta.content
+            if delta:
+                yield self._sanitize_text(delta)
 
     async def chat_json(self, messages: list[dict], model: str | None = None, **kwargs) -> str:
         """请求 JSON 输出。对端不支持 response_format 时降级为普通请求 + 去除 markdown 围栏。"""
