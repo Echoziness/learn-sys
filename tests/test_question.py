@@ -28,11 +28,11 @@ def test_blank_keywords_skipped():
     assert validate_expected_keywords(["", "   ", "主键"], CONTENT) == ["主键"]
 
 
-def test_max_four_keywords():
+def test_max_five_keywords():
     many = [f"要点{i}" for i in range(8)]
     content = "要点0 要点1 要点2 要点3 要点4 要点5 要点6 要点7"
     valid = validate_expected_keywords(many, content)
-    assert len(valid) == MAX_EXPECTED_KEYWORDS
+    assert len(valid) == MAX_EXPECTED_KEYWORDS == 5
 
 
 def test_latin_keyword_case_insensitive():

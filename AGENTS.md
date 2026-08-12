@@ -119,8 +119,9 @@ diagnose（LLM 一次，输出 gap_ids）→ plan（确定性切片：ID 投影 
 - **题型单向推进**：进入 answer 深度后不因单次失误降回泛化 choice（识别题会掩盖真实理解状态）——`build_question(floor_type=...)` 强制；真正降级由"连续 2 次答错 → regress"触发；
 - **脚手架选择题**：answer 失败后下轮先出脚手架（`core/agents/question.py` 的 `build_scaffold_distractors`）——正确项=条目 keywords，干扰项 LLM 生成且**首项必须是学生作答中的典型错误理解镜像**（对比发现自己的问题），LLM 失败回退确定性干扰项；脚手架答对回 answer，**答对不计入掌握度历史**（不打断连续错降维计数），答错计一次错；
 - **评估与裁决分离**：answer 题总是送 LLM 评估（覆盖率不足的作答最有教学价值，规则预筛只降级裁决不降级评估）；fail-closed 收口——LLM 判 correct 但规则覆盖率 <0.6 时维持判错且评估不采用 LLM 的（防放水+防"答对了"误导）；
+- **题意核对硬收口**：feedback 复核强制拆"题目要求检查单"并输出 `missed_requirements`——LLM 判 correct 但遗漏清单非空时服务端硬降级 partial（expected 关键词覆盖率可能因 expected 不全而虚高，LLM 的遗漏清单是题意核对证据，防"漏答 LIMIT 仍判对"）；
 - answer 判分两级：规则预筛（覆盖率 <0.6 直接判错，裁决不放松）→ 覆盖达标送 LLM 复核（`core/agents/feedback.py`，可识别关键词罗列/逻辑错误并输出教学评估）；LLM 复核标准已校准——只有概念错误/漏答题目关键要求/答非所问才判 partial/incorrect，措辞不精确、换说法但意思正确判 correct；LLM 失败回退规则时要求关键词全覆盖（coverage=1.0）才判对；
-- 回答题题干与判分要点由 LLM 一起生成（`core/agents/question.py`，场景化提问，禁止问条目之外内容）；expected 服务端校验——字符必须全部出自条目 content（防 LLM 编造，`validate_expected_keywords` 纯函数可单测），校验失败回退条目 keywords；按 entry_id 缓存 (题干, expected) 对；
+- 回答题题干与判分要点由 LLM 一起生成（`core/agents/question.py`，场景化提问，禁止问条目之外内容）；expected 服务端校验——字符必须全部出自条目 content（防 LLM 编造，`validate_expected_keywords` 纯函数可单测），校验失败回退条目 keywords；**题目中每个具体操作要求（数字/方向/关键字）必须对应一个 expected 要点**（宁多勿漏，否则漏答被判对）；按 entry_id 缓存 (题干, expected) 对；
 - **出题深度契约**：回答题必须注入本轮教学论断（`taught_claims`）作为出题上限——学生只需运用已教概念即可作答，禁止问教学内容未覆盖的深度（防"教得浅、考得深"）；retry 重教后条目教学内容加深，该 entry 的题目缓存必须失效重生成；
 - LLM 输出截断防护：`core/llm.py` 检查 finish_reason=length 显式抛 `LLMOutputError`（JSON 必然残缺，不做无意义重试）；
 - 知识条目必带 `knowledge_type`（`memory` 事实/定义/术语 / `concept` 概念与关系 / `procedure` 步骤技能，枚举在 `scripts/init_db.py.KnowledgeType`，DB 列 DEFAULT 'concept'），描述知识本体（影响教学方式/门槛/复习节奏），不绑定题型，core/plan.KnowledgeEntry 同持此字段（默认 concept）；

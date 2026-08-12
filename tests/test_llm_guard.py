@@ -16,6 +16,22 @@ class FailingProvider:
         raise RuntimeError("LLM unavailable")
 
 
+class StubVerdictProvider:
+    """返回预设裁决——用于矛盾检测测试。"""
+
+    def __init__(self, verdict, missed=None, evaluation="评估"):
+        self._verdict = verdict
+        self._missed = missed or []
+        self._evaluation = evaluation
+
+    async def chat_validated(self, messages, schema, model=None, **kwargs):
+        return schema(
+            verdict=self._verdict,
+            evaluation=self._evaluation,
+            missed_requirements=self._missed,
+        )
+
+
 def test_sanitize_text_removes_lone_surrogates():
     text = "正常文本\ud800\udfff结束"
     cleaned = LLMProvider._sanitize_text(text)
@@ -67,3 +83,42 @@ def test_fallback_empty_coverage_fails():
         )
     )
     assert fb["verdict"] == "incorrect"
+
+
+def test_correct_with_missed_requirements_downgraded():
+    """判 correct 但自报遗漏清单 → 服务端硬降级为 partial（防 LIMIT 式漏答放行）。"""
+    q = _question_state()
+    fb = asyncio.run(
+        feedback_node(
+            {"question": asdict(q), "answer": "select * from goods order by sales desc"},
+            provider=StubVerdictProvider(
+                verdict="correct", missed=["LIMIT 前5件"], evaluation="整体不错"
+            ),
+        )
+    )
+    assert fb["verdict"] == "partial"
+    assert fb["evaluation"] == "整体不错"
+
+
+def test_correct_without_missed_kept():
+    q = _question_state()
+    fb = asyncio.run(
+        feedback_node(
+            {"question": asdict(q), "answer": "完整作答"},
+            provider=StubVerdictProvider(verdict="correct", missed=[], evaluation="完整"),
+        )
+    )
+    assert fb["verdict"] == "correct"
+
+
+def test_partial_with_missed_kept():
+    q = _question_state()
+    fb = asyncio.run(
+        feedback_node(
+            {"question": asdict(q), "answer": "部分作答"},
+            provider=StubVerdictProvider(
+                verdict="partial", missed=["LIMIT"], evaluation="漏了 LIMIT"
+            ),
+        )
+    )
+    assert fb["verdict"] == "partial"

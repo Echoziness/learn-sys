@@ -30,24 +30,33 @@ FEEDBACK_PROMPT = """你是一位耐心的教学评估老师。请对学生的�
 {options_section}判分要点（expected）：{keywords}
 学生作答：{answer}
 
+重要：规则判分仅供参考（关键词覆盖 ≠ 题意满足，规则可能放行遗漏）。
+必须自己逐项核对，不得因为"规则判分通过"就放行。
+
 请完成：
-1. 判断该作答是否真正理解了知识：correct（理解正确且完整）/
+1. 先把题目拆成"具体要求清单"（场景、数字、方向、关键字等每个操作要求一项），
+   逐项核对作答是否满足，列出未满足的要求。
+2. 再判断该作答是否真正理解了知识：correct（理解正确且完整，无遗漏）/
    partial（方向对但有遗漏或偏差）/ incorrect（理解错误或答非所问）。
    - 判分标准（校准，防吹毛求疵）：只有出现以下情况才判 partial 或 incorrect——
      ① 概念理解错误或混淆；② 遗漏了题目明确要求回答的关键点；③ 作答与题目无关。
    - 措辞不精确、未使用标准术语、换了一种说法但意思正确 → 判 correct。
    - 判分要点是"应该覆盖的"，学生用自己的话表达了同样的意思也算覆盖。
-2. 写一段 50-100 字的评估，要给学生看：先说学生说对/做对了什么（具体点名），
+3. 写一段 50-100 字的评估，要给学生看：先说学生说对/做对了什么（具体点名），
    再说遗漏或理解偏差（具体指出哪句话有问题、应该是什么），最后给出改进建议。
    语气温暖鼓励，但不放水——准确是第一位。
 
 严格按 JSON 输出：
-{{"verdict": "correct|partial|incorrect", "evaluation": "评估文本"}}"""
+{{"verdict": "correct|partial|incorrect", "evaluation": "评估文本",
+  "missed_requirements": ["未满足的具体要求，无则空列表"]}}"""
 
 
 class FeedbackOutput(BaseModel):
     verdict: Literal["correct", "partial", "incorrect"] = Field(description="LLM 判分复核结果")
     evaluation: str = Field(description="给学生看的教学评估文本")
+    missed_requirements: list[str] = Field(
+        default_factory=list, description="题目要求中作答未满足的清单（无则空）"
+    )
 
 
 class FeedbackLLM(Protocol):
@@ -116,9 +125,15 @@ async def feedback_node(
         return {
             "verdict": "correct" if coverage >= 1.0 else "incorrect",
             "evaluation": "",
+            "missed_requirements": [],
         }
 
-    return {"verdict": output.verdict, "evaluation": output.evaluation}
+    # 服务端矛盾检测：判 correct 却自报遗漏清单 → 硬降级为 partial。
+    # 规则覆盖率可能因 expected 不全而虚高，LLM 的遗漏清单是题意核对证据。
+    verdict = output.verdict
+    if verdict == "correct" and output.missed_requirements:
+        verdict = "partial"
+    return {"verdict": verdict, "evaluation": output.evaluation}
 
 
 __all__ = ["FeedbackOutput", "feedback_node"]
