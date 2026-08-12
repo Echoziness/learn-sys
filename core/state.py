@@ -33,6 +33,10 @@ class DraftClaim(BaseModel):
     claim_index: int
     text: str
     evidence_ids: list[str] = Field(min_length=1)  # 生产约束：无证据的论断在 schema 层即拒绝
+    claim_type: Literal["core", "extension"] = "core"
+    # core=条目覆盖层（严格证据链，NLI 逐字核对）；
+    # extension=错因扩展层（仅重教轮出现，针对学生错因的应用级讲解，
+    # 允许推导/示例，审核降为"概念一致 + 推导自洽"）
 
 
 class ReviewNote(BaseModel):
@@ -76,6 +80,7 @@ class AgentState(TypedDict, total=False):
     outline: dict
     draft: list[DraftClaim]
     cited_entries: list[RetrievedEntry]
+    retry_context: str  # 重教轮错因回流：上一轮题目+学生作答+评估（仅 retry 轮注入）
 
     # review：辩论链追加式累积；feedback 是生成 Agent 下一轮的唯一反馈通道
     review_round: int

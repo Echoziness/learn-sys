@@ -37,6 +37,7 @@ GENERATE_PROMPT = """你是大数据分析领域的培训讲师。根据以下�
 {difficulty_instruction}
 上轮审核反馈（如有，请逐条回应：采纳并修正，或说明反驳理由）：{feedback}
 {uncovered_section}
+{retry_section}
 【本次教学主题条目】（必须围绕它讲，这是本轮唯一要教透的内容）：
 {anchor_entry}
 
@@ -49,8 +50,15 @@ GENERATE_PROMPT = """你是大数据分析领域的培训讲师。根据以下�
 3. 内容严格基于条目原文，不编造不在条目中的知识点。
 4. 根据画像调整难度和举例风格。
 5. 严禁讲解背景条目中的知识点——主题条目里没有的内容一律不教。
+6. 论断分两类，按 class 标注：
+   - "core"：常规论断，严格基于条目原文（默认）；
+   - "extension"：仅当存在【学生错因与上轮作答】段时必须至少新增 1 条——
+     直接指出学生错在哪里、正确理解是什么；允许应用级示例与推导
+     （如具体的表设计、计算步骤），但必须从引用的条目概念推导而来，
+     不得与条目内容相悖，也不得引入条目之外的新概念。
 
-严格按 JSON 输出：{{"draft": [{{"claim_index": 1, "text": "...", "evidence_ids": ["..."]}}]}}"""
+严格按 JSON 输出：
+{{"draft": [{{"claim_index": 1, "text": "...", "evidence_ids": ["..."], "claim_type": "core"}}]}}"""
 
 
 async def generate_node(
@@ -83,6 +91,14 @@ async def generate_node(
         else ""
     )
 
+    retry_context = state.get("retry_context", "")
+    retry_section = (
+        "【学生错因与上轮作答】（重教轮出现，这是本轮教学的第一优先级，"
+        "必须针对性地回应，不能回避）：\n" + retry_context
+        if retry_context
+        else ""
+    )
+
     output = await provider.chat_validated(
         [
             {
@@ -95,6 +111,7 @@ async def generate_node(
                     ),
                     feedback=state.get("last_review_feedback", ""),
                     uncovered_section=uncovered_section,
+                    retry_section=retry_section,
                     anchor_entry=anchor_entry_text,
                     aux_entries=aux_text,
                 ),
