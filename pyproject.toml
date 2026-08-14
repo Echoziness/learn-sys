@@ -12,6 +12,8 @@ dependencies = [
     "sqlite-vec>=0.1",
     "python-dotenv>=1.0",
     "torch>=2.0",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.52.3",
 ]
 
 [tool.uv.sources]

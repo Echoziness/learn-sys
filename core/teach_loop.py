@@ -36,7 +36,7 @@ from core.deliver import (
 )
 from core.llm import LLMProvider
 from core.mastery import compute_mastery, decide_next_step
-from core.plan import KnowledgeEntry, Plan, build_plan
+from core.plan import KnowledgeEntry, Plan, PlanTopic, build_plan
 from core.session import SessionStore
 from core.state import AgentState, DraftClaim, LearnerProfile, ReviewNote
 
@@ -368,7 +368,7 @@ class TeachLoop:
 
         pending = self._store.get_pending_round(ctx.session_id, entry_id)
         if pending is not None:
-            return self._question_from_record(pending)
+            return self.question_from_record(pending)
 
         progress = self.progress(ctx.session_id, entry_id)
         round_no = progress.next_round_no
@@ -656,6 +656,34 @@ class TeachLoop:
             correctness=self._store.load_mastery_history(session_id, entry_id),
         )
 
+    def rebuild_context(self, session_id: str) -> SessionContext:
+        """从 DB 重建会话上下文（api 层跨请求复用；D2：无内存会话态）。"""
+        session = self._store.get_session(session_id)
+        if session is None:
+            raise KeyError(f"会话 {session_id} 不存在")
+        plan = Plan(
+            topics=[
+                PlanTopic(
+                    entry_id=t["entry_id"],
+                    title=t["title"],
+                    order=t["order"],
+                    target=t.get("target", True),
+                )
+                for t in session["plan"].get("topics", [])
+            ],
+            uncovered_gaps=session["plan"].get("uncovered_gaps", []),
+        )
+        return SessionContext(
+            session_id=session_id,
+            learner_id=session["learner_id"],
+            profile=LearnerProfile(**session["profile"]),
+            difficulty_level=session["difficulty_level"] or "beginner",
+            profile_summary=session["profile_summary"] or "",
+            gap_ids=session["gap_ids"],
+            plan=plan,
+            entries=self._entries,
+        )
+
     # ---------- 序列化辅助 ----------
 
     @staticmethod
@@ -670,7 +698,7 @@ class TeachLoop:
         }
 
     @staticmethod
-    def _question_from_record(record: dict[str, Any]) -> Question:
+    def question_from_record(record: dict[str, Any]) -> Question:
         q = record["question"]
         return Question(
             question_id=q["question_id"],

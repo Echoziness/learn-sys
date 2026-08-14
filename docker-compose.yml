@@ -1,0 +1,40 @@
+services:
+  db-init:
+    build: .
+    volumes:
+      - ./data:/app/data
+    env_file: .env
+    environment:
+      HF_HUB_OFFLINE: "1" # 模型随 data/ 卷挂载，禁止容器内联网探测
+    command: ["uv", "run", "--no-dev", "python", "scripts/init_db.py"]
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    env_file: .env
+    environment:
+      HF_HUB_OFFLINE: "1"
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/openapi.json')"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s # BGE-M3 加载约 30-60s
+    command: ["uv", "run", "--no-dev", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+  web:
+    build:
+      context: ./web
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000 # build 时内联（运行时 env 无效）
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy

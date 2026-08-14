@@ -104,35 +104,47 @@ diagnose（LLM 一次，输出 gap_ids）→ plan（确定性切片：ID 投影 
 |---|---|---|
 | diagnose | `learner_profile`, `test_results` | `gap_ids`（收敛到本体目录）, `gaps`, `profile_summary`, `difficulty_level` |
 | retrieve | `gaps`, `difficulty_level`, `anchor_entry` | `retrieved_entries`, `uncovered_gaps` |
-| generate | `retrieved_entries`, `anchor_entry`, `profile_summary`, `outline`, `last_review_feedback`, `retry_context`, `uncovered_gaps`, `difficulty_level` | `draft`, `cited_entries` |
+| generate | `retrieved_entries`, `anchor_entry`, `profile_summary`, `outline`, `last_review_feedback`, `retry_context`, `uncovered_gaps`, `difficulty_level` | `draft`, `cited_entries`（procedure 条目须含 procedure_guide 论断） |
 | review | `draft`, `cited_entries`, `review_round` | `review_history`(append), `review_round`, `last_review_feedback` |
-| plan（纯函数） | —（不入 state，CLI 直接调用） | — |
+| plan（纯函数） | —（不入 state，teach_loop 直接调用） | — |
 | assess（纯函数） | 条目（KnowledgeEntry）+ 当前掌握度 | 题目（按掌握度选题型） |
-| feedback（LLM 节点） | 题目、作答、规则判分结果 | verdict / evaluation（CLI 层用） |
+| feedback（LLM 节点） | 题目、作答、规则判分结果 | verdict / evaluation / missed_requirements |
 | question（LLM 节点） | 条目（id/title/content/keywords）+ taught_claims（本轮教学论断） | 题干 + expected（服务端校验字符出自 content） |
-| answer_pipeline（服务函数） | 题目、作答、掌握度历史 | AnswerOutcome（判分/评估/决策，CLI 与 Web 共用） |
+| answer_pipeline（服务函数） | 题目、作答、掌握度历史 | AnswerOutcome（判分/评估/决策/遗漏清单，CLI 与 Web 共用） |
+| deliver（纯函数，W1 已上线） | draft + review_history（或 teach_delivered 事件）、教学轮历史、knowledge_type、mastery | 讲义（仅 supported）/ 分阶题归档 / 实操指南 / 进阶挑战 / 难度层级 |
 
 每个节点只读写表内 key，越界即 code review 驳回。隔离红线：review 禁止任何画像字段（含 `profile_summary`）；generate 只读 `profile_summary` 摘要，禁止 `learner_profile` 原始模型；对话日志永不进生成上下文。
 
 ### 3.6 关键 schema 约束
 
-- 生成 Agent 输出每条论断必含 `evidence_ids`（引用知识条目 ID 的列表）与 `claim_type`：`core`（条目覆盖层，严格证据链）/ `extension`（错因扩展层，仅重教轮出现，针对学生错因的应用级讲解，允许推导与示例但不得引入条目之外的新概念）；
-- 审核 Agent 输出每条论断的裁决 = `supported | partially_supported | unsupported`（NLI 三分类）；**分级标准**：core 论断必须被条目原文明确支持；extension 论断降为"概念一致 + 推导自洽"（防幻觉锚点不放松——evidence_ids 照常校验，只是裁决标准分级）；
+- 生成 Agent 输出每条论断必含 `evidence_ids`（引用知识条目 ID 的列表）与 `claim_type`：`core`（条目覆盖层，严格证据链）/ `extension`（错因扩展层，仅重教轮出现，针对学生错因的应用级讲解，允许推导与示例但不得引入条目之外的新概念）/ `procedure_guide`（实操指南步骤，仅 procedure 条目，步骤+可运行示例+检查点）；
+- 审核 Agent 输出每条论断的裁决 = `supported | partially_supported | unsupported`（NLI 三分类）；**分级标准**：core 论断必须被条目原文明确支持；extension 与 procedure_guide 论断降为"概念一致 + 推导自洽"（防幻觉锚点不放松——evidence_ids 照常校验，只是裁决标准分级）；
 - 所有 agent 间消息用 Pydantic BaseModel / TypedDict 定义；
 - 掌握度数学只在 `core/mastery.py`（纯函数：recency-weighted + 置信度封顶 + 门槛 0.7 + 连错 2 次降维），新增教学数值必须落在此处，禁止散落各节点；
-- 出题/判分只在 `core/assess.py`（fail-closed：无 expected 关键词即判错，绝不判对）；expected 永不进学生视野；
-- 题型仅两种且与知识类型解耦：choice（选择题，识别式）与 answer（回答题，回忆式），由掌握度驱动（<0.5 选择 / ≥0.5 回答，对齐 PRD 阶梯）；选择题干扰项从其他条目关键词确定性构造（不调 LLM），判分只认选项标签（贴全文不算对）；
+- 出题/判分只在 `core/assess.py`（fail-closed：无 expected 关键词即判错，绝不判对）；expected 永不进学生视野（只落 topic_rounds.expected_json，不进事件流）；
+- 题型仅两种且与知识类型解耦：choice（选择题，识别式）与 answer（回答题，回忆式），由掌握度驱动（<0.5 选择 / ≥0.5 回答，对齐 PRD 阶梯）；选择题干扰项从其他条目关键词确定性构造（不调 LLM），判分只认选项标签（贴全文不算对）；question_id 编码轮次与题型（`q_{entry}_r{round}_{type}`），资源包按 id 去重时不同轮/题型不互相覆盖；
 - **题型单向推进**：进入 answer 深度后不因单次失误降回泛化 choice（识别题会掩盖真实理解状态）——`build_question(floor_type=...)` 强制；真正降级由"连续 2 次答错 → regress"触发；
 - **脚手架选择题**：answer 失败后下轮先出脚手架（`core/agents/question.py` 的 `build_scaffold_distractors`）——正确项=条目 keywords，干扰项 LLM 生成且**首项必须是学生作答中的典型错误理解镜像**（对比发现自己的问题），LLM 失败回退确定性干扰项；脚手架答对回 answer，**答对不计入掌握度历史**（不打断连续错降维计数），答错计一次错；
 - **评估与裁决分离**：answer 题总是送 LLM 评估（覆盖率不足的作答最有教学价值，规则预筛只降级裁决不降级评估）；fail-closed 收口——LLM 判 correct 但规则覆盖率 <0.6 时维持判错且评估不采用 LLM 的（防放水+防"答对了"误导）；
 - **题意核对硬收口**：feedback 复核强制拆"题目要求检查单"并输出 `missed_requirements`——LLM 判 correct 但遗漏清单非空时服务端硬降级 partial（expected 关键词覆盖率可能因 expected 不全而虚高，LLM 的遗漏清单是题意核对证据，防"漏答 LIMIT 仍判对"）；
 - answer 判分两级：规则预筛（覆盖率 <0.6 直接判错，裁决不放松）→ 覆盖达标送 LLM 复核（`core/agents/feedback.py`，可识别关键词罗列/逻辑错误并输出教学评估）；LLM 复核标准已校准——只有概念错误/漏答题目关键要求/答非所问才判 partial/incorrect，措辞不精确、换说法但意思正确判 correct；LLM 失败回退规则时要求关键词全覆盖（coverage=1.0）才判对；
-- 回答题题干与判分要点由 LLM 一起生成（`core/agents/question.py`，场景化提问，禁止问条目之外内容）；expected 服务端校验——字符必须全部出自条目 content（防 LLM 编造，`validate_expected_keywords` 纯函数可单测），校验失败回退条目 keywords；**题目中每个具体操作要求（数字/方向/关键字）必须对应一个 expected 要点**（宁多勿漏，否则漏答被判对）；按 entry_id 缓存 (题干, expected) 对；
-- **出题深度契约**：回答题必须注入本轮教学论断（`taught_claims`）作为出题上限——学生只需运用已教概念即可作答，禁止问教学内容未覆盖的深度（防"教得浅、考得深"）；retry 重教后条目教学内容加深，该 entry 的题目缓存必须失效重生成；
+- 回答题题干与判分要点由 LLM 一起生成（`core/agents/question.py`，场景化提问，禁止问条目之外内容）；expected 服务端校验——字符必须全部出自条目 content（防 LLM 编造，`validate_expected_keywords` 纯函数可单测），校验失败回退条目 keywords；**题目中每个具体操作要求（数字/方向/关键字）必须对应一个 expected 要点**（宁多勿漏，否则漏答被判对）；pending 轮落库即缓存（teach_loop.next_question 幂等复用）；
+- **出题深度契约**：回答题必须注入本轮教学论断（`taught_claims`，取自最近一次 teach_delivered 事件）作为出题上限——学生只需运用已教概念即可作答，禁止问教学内容未覆盖的深度（防"教得浅、考得深"）；retry 重教后 delete_pending_rounds 作废旧题重生成；
 - LLM 输出截断防护：`core/llm.py` 检查 finish_reason=length 显式抛 `LLMOutputError`（JSON 必然残缺，不做无意义重试）；
 - 知识条目必带 `knowledge_type`（`memory` 事实/定义/术语 / `concept` 概念与关系 / `procedure` 步骤技能，枚举在 `scripts/init_db.py.KnowledgeType`，DB 列 DEFAULT 'concept'），描述知识本体（影响教学方式/门槛/复习节奏），不绑定题型，core/plan.KnowledgeEntry 同持此字段（默认 concept）；
 - 新增种子条目 content 控制在 50-100 字（代码片段算字符），且每个关键词去空格后的全部字符必须出现在 content 里（判分靠子串，`tests/test_seeds.py` 全量校验）；
 - DB schema 变更禁止删库重建：`scripts/init_db.py` 用幂等迁移（PRAGMA table_info 查列 → 缺则 `ALTER TABLE ADD COLUMN`），保留运行时数据与 rowid 对齐（FTS/vec 外部表依赖）。
+
+### 3.7 会话层（W1 已上线）
+
+- **进度从历史推导**：reached_answer / scaffold_pending / retry_context 全部由 `topic_rounds` + `mastery_snapshots` 历史计算（`teach_loop.TopicProgress`），无内存会话态——任何进程重启后从 DB 续跑（api 无状态的前提）；
+- **事件流一表三用**：`session_events`（seq 会话内单调 + payload 自包含）同时服务裁判面渲染、回放演示、审计日志；实时 = emit 写库 + 进程内订阅推送，回放 = 按 seq 读表，前端渲染代码复用；
+- **事件协议**：session_start / diagnose_done / plan_done / topic_start / retrieve_done / generate_done / review_done / teach_delivered / question_built / answer_graded / scaffold_offered / topic_advance / topic_regress / package_saved / session_end（+error）——payload 字段见架构文档 §4；
+- **教学轮生命周期**：next_question 落 pending 轮（幂等，web 刷新安全）→ handle_answer 填充 answer/grade/decision → 重教时 delete_pending_rounds 作废；
+- **资源包 upsert 合并**：UNIQUE(session_id, entry_id)；讲义跨轮追加合并，题目按 question_id 去重（重教重生成覆盖旧版），practice/challenge 用 COALESCE 保留旧值；
+- **脚手架决策收口**：脚手架答对不写掌握度快照，决策从计数历史重算（防洗白降维计数/防虚高 advance）——落在 teach_loop.handle_answer；
+- **SSE 契约**：帧 = `event: <type>\ndata: <json>\n\n`（api/sse.py 编码，实时与回放同构）；LLM 失败以 error 事件透出，不静默断流；
+- **api 装配**：lifespan 内创建 provider/encoder/retriever/graph/TeachLoop 常驻（BGE-M3 ~2GB 只加载一次）；会话上下文经 `TeachLoop.rebuild_context` 从 DB 重建。
 
 ## 4. 编码约定
 
@@ -164,6 +176,10 @@ diagnose（LLM 一次，输出 gap_ids）→ plan（确定性切片：ID 投影 
 | 旧库重跑 init_db 缺列崩 SQL（schema 变更后） | `CREATE TABLE IF NOT EXISTS` 不会给已存在表补列 | 幂等迁移：PRAGMA table_info 查列，缺则 `ALTER TABLE ADD COLUMN`（见 `init_db.migrate_knowledge_type`） |
 | 学生作答含孤立 surrogate 导致 feedback LLM 编码失败（utf-8 codec surrogates not allowed） | 粘贴文本带入 U+D800-DFFF，json 序列化/编码崩 | 双层防护：`scripts/cli_input._sanitize`（输入边界）+ `core/llm.LLMProvider._sanitize_text`（请求与响应侧都净化，纵深防御） |
 | 每次 LLM 调用 15-60s（思考模式默认开启） | `deepseek-v4-flash/pro` 的 thinking 默认 enabled——先推理后输出；且官方不建议"思考 + JSON 模式"同开（response_format=json_object），与偶发 JSON 解析失败相关 | `.env` 配 `LLM_EXTRA_BODY={"thinking": {"type": "disabled"}}`——本系统所有调用都是 JSON 输出，思考无收益纯延迟 |
+| 资源包题目互相覆盖（choice 轮归档消失） | question_id 不含轮次/题型，同条目不同轮的题 id 相同，upsert 按 id 去重时旧版被覆盖 | question_id 编码 `q_{entry}_r{round}_{type}`，不同轮/题型天然隔离 |
+| api 启动即 ImportError（circular import） | routes 从 api.main 导入 sse_frame，main 又 import routes——模块级互相引用 | 工具函数放独立模块（api/sse.py），main 只做工厂与装配 |
+| 容器内前端连不上 API | `NEXT_PUBLIC_*` 是 Next.js 构建时内联变量，运行时 environment 不生效 | 走 build args：Dockerfile `ARG` + `ENV` 在 `pnpm build` 前，compose `build.args` 传入 |
+| docker 容器内 BGE 联网探测卡启动 | sentence-transformers 默认查 Hub 更新 | 容器 `HF_HUB_OFFLINE=1`（模型随 data/ 卷挂载，全离线） |
 
 ## 7. 开发模式（AI 生成代码遵循以下流程）
 
@@ -179,13 +195,14 @@ diagnose（LLM 一次，输出 gap_ids）→ plan（确定性切片：ID 投影 
 
 ```bash
 uv sync                                          # Python 依赖
-uv run python scripts/run_cli.py test1 --sim 0.8 --max-rounds 1  # 会话 CLI（--sim 模拟学生 / --max-rounds 单轮验证；Phase 3 后为 uvicorn api.main:app）
-cd web && pnpm install && pnpm dev                # 前端
-uv run pytest -v                                  # 测试
-uv run pyright core/ scripts/ tests/               # Python 类型检查
-uv run ruff check .                                  # Python lint（E/F/W/I/UP/B/SIM）
-cd web && pnpm typecheck && pnpm lint             # 前端类型检查
-uv run python scripts/init_db.py                  # 初始化知识库（幂等）
-uv run python evals/run.py                        # 评测（晚间/周末跑）
-docker compose up --build                         # 交付启动
+uv run python scripts/run_cli.py test1 --sim 0.8 --max-rounds 1  # 会话 CLI（--sim 模拟学生 / --max-rounds 单轮验证）
+uv run uvicorn api.main:app --port 8000          # API（lifespan 常驻装配，BGE 加载约 30s）
+cd web && pnpm install && pnpm dev               # 前端
+uv run pytest -v                                 # 测试
+uv run pyright core/ scripts/ tests/ api/        # Python 类型检查
+uv run ruff check .                              # Python lint（E/F/W/I/UP/B/SIM）
+cd web && pnpm typecheck && pnpm lint            # 前端类型检查
+uv run python scripts/init_db.py                 # 初始化知识库 + 会话表（幂等）
+uv run python evals/run.py                       # 评测（W2）
+docker compose up --build                        # 交付启动
 ```

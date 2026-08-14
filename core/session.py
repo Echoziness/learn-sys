@@ -386,6 +386,27 @@ class SessionStore:
             db.close()
         return [bool(r[0]) for r in rows]
 
+    def load_mastery_report(self, session_id: str) -> list[dict[str, Any]]:
+        """全条目掌握度快照（报告页雷达/曲线数据源）。"""
+        db = self._connect()
+        try:
+            rows = db.execute(
+                "SELECT entry_id, round_no, correctness, mastery_after "
+                "FROM mastery_snapshots WHERE session_id=? ORDER BY id",
+                (session_id,),
+            ).fetchall()
+        finally:
+            db.close()
+        return [
+            {
+                "entry_id": r[0],
+                "round_no": r[1],
+                "correctness": bool(r[2]),
+                "mastery_after": r[3],
+            }
+            for r in rows
+        ]
+
     # ---------- 资源包 ----------
 
     def upsert_package(
