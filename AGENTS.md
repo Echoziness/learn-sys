@@ -1,6 +1,7 @@
 # learn-sys · AGENTS.md
 
-> 完整背景见 `docs/技术选型记录.md` 和 `docs/开发约束与工程规范.md`。本文档是对 AI 开放的最小开发边界，不包含决策理由和反面案例——只描述正确做法。
+> 完整背景见 `docs/产品需求文档.md`（PRD v3.0）、`docs/架构设计文档.md`、`docs/开发路线图.md` 和 `docs/开发约束与工程规范.md`。本文档是对 AI 开放的最小开发边界，不包含决策理由和反面案例——只描述正确做法。
+> 产品定位一句话：**面向职业培训的个性化学习资源生产引擎**——导学会话是资源的生产过程，产出三形态资源包（讲义/分阶题/实操指南）+ 学情报告。一切工作必须落在四类证据物：可视化系统 / 指标数字 / 测试数据 / 可部署源码。
 
 ## 1. 技术栈
 
@@ -35,25 +36,30 @@ learn-sys/
 │   ├── plan.py              # 课程切片（纯函数：gap匹配+前置链闭包+难度过滤+拓扑排序）+ KnowledgeEntry 模型
 │   ├── assess.py            # 确定性出题/判分（纯函数：掌握度驱动题型——低掌握度选择题/高掌握度回答题，fail-closed）
 │   ├── answer_pipeline.py     # 作答处理管线（判分→LLM复核→掌握度→决策，CLI/Web 共用入口）
+│   ├── session.py             # SessionStore：会话/事件流/轮次/资源包 DB 读写 + 事件发射（W1，设计见架构文档 §3/§4）
+│   ├── teach_loop.py          # 会话编排服务：诊断→切片→逐主题循环，CLI/Web 共用（W1，自 run_cli 抽取）
+│   ├── deliver.py             # 资源包组装：三形态 + 溯源链 + 进阶标记（W1）
 │   ├── llm.py               # LLMProvider（AsyncOpenAI，显式 180s 读取超时）+ chat_validated 校验重试
 │   ├── retrieval.py         # Retriever 类：FTS5(CJK逐字切分) + sqlite-vec + RRF + 覆盖度判定
 │   ├── embedding.py         # BGEEncoder（仅组合根 import，加载 ~2GB 模型）
 │   ├── config.py            # Settings：全项目唯一 env 读取点
 │   └── logging.py           # structlog JSON 配置
-├── api/                     # FastAPI（薄层，只做序列化→转发→推流，Phase 3 挂载）
-│   └── routes/
+├── api/                     # FastAPI（薄层，只做序列化→转发→推流；启动时常驻装配 provider/encoder/graph）
+│   ├── models.py            # API schema（Pydantic）
+│   ├── main.py              # app 工厂
+│   └── routes/              # sessions/teach/question/answers/report/replay（契约见架构文档 §5）
 ├── scripts/                 # 组合根
 │   ├── cli_input.py         # CLI 交互输入层（readline 行编辑 + 输入边界净化；刻意轻量，主战场在 Web）
-│   ├── init_db.py           # 幂等知识库 loader（数据来自 data/seeds/，不内嵌数据）
-│   └── run_cli.py           # 会话 CLI：诊断→切片→逐主题教学→问答循环→降维
+│   ├── init_db.py           # 幂等知识库 loader + 会话表迁移（数据来自 data/seeds/，不内嵌数据）
+│   └── run_cli.py           # 会话 CLI（薄壳，调 core/teach_loop）
 ├── data/
 │   ├── seeds/<domain>/entries.jsonl  # 知识条目（一等数据文件，换目录即换领域；每条必带 knowledge_type）
 │   ├── seeds/profiles/*.json         # 学习者画像种子
-│   └── knowledge.db         # 业务 + FTS5 + vec（单文件，由 init_db 生成）
+│   └── knowledge.db         # 知识库 + FTS5 + vec + 会话/事件/资源包（单文件，由 init_db 生成）
 ├── tests/                   # pytest，与 evals/metrics.py 同口径
-├── evals/                   # metrics.py（指标 SSOT）+ profiles/ + run.py
-├── web/                     # Next.js 15（Phase 4）
-└── docker-compose.yml
+├── evals/                   # metrics.py（三指标口径 SSOT）+ profiles/（50 组）+ run.py（W2）
+├── web/                     # Next.js 15：学生面 / 裁判面(orchestration) / 报告(report)（W1 脚手架）
+└── docker-compose.yml       # api + web + db-init（W1 骨架）
 ```
 
 ## 3. 架构
