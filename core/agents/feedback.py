@@ -133,7 +133,11 @@ async def feedback_node(
     verdict = output.verdict
     if verdict == "correct" and output.missed_requirements:
         verdict = "partial"
-    return {"verdict": verdict, "evaluation": output.evaluation}
+    return {
+        "verdict": verdict,
+        "evaluation": output.evaluation,
+        "missed_requirements": output.missed_requirements,
+    }
 
 
 __all__ = ["FeedbackOutput", "feedback_node"]

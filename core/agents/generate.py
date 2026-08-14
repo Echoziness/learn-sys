@@ -50,12 +50,16 @@ GENERATE_PROMPT = """你是大数据分析领域的培训讲师。根据以下�
 3. 内容严格基于条目原文，不编造不在条目中的知识点。
 4. 根据画像调整难度和举例风格。
 5. 严禁讲解背景条目中的知识点——主题条目里没有的内容一律不教。
-6. 论断分两类，按 class 标注：
+6. 论断分类，按 class 标注：
    - "core"：常规论断，严格基于条目原文（默认）；
    - "extension"：仅当存在【学生错因与上轮作答】段时必须至少新增 1 条——
      直接指出学生错在哪里、正确理解是什么；允许应用级示例与推导
      （如具体的表设计、计算步骤），但必须从引用的条目概念推导而来，
-     不得与条目内容相悖，也不得引入条目之外的新概念。
+     不得与条目内容相悖，也不得引入条目之外的新概念；
+   - "procedure_guide"：仅当【本次教学主题条目】标注 "knowledge_type": "procedure"
+     时必须产出 2-3 条——步骤化实操指南，每条一个操作步骤
+     （步骤 + 可运行示例 + 检查点），学生照做即可完成上机实操。
+     同样基于条目原文，evidence_ids 照常标注。非 procedure 条目禁止使用此类型。
 
 严格按 JSON 输出：
 {{"draft": [{{"claim_index": 1, "text": "...", "evidence_ids": ["..."], "claim_type": "core"}}]}}"""
@@ -70,7 +74,12 @@ async def generate_node(
 
     if anchor is not None:
         anchor_entry_text = json.dumps(
-            {"id": anchor.id, "title": anchor.title, "content": anchor.content},
+            {
+                "id": anchor.id,
+                "title": anchor.title,
+                "content": anchor.content,
+                "knowledge_type": getattr(anchor, "knowledge_type", "concept"),
+            },
             ensure_ascii=False,
             indent=2,
         )

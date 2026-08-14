@@ -62,61 +62,86 @@ SCHEMA = """
         updated_at  TEXT DEFAULT (datetime('now'))
     );
 
-    CREATE TABLE IF NOT EXISTS profile_updates (
+    -- ============ 会话层（W1，设计见 docs/架构设计文档.md §3.2） ============
+
+    -- 会话元数据：画像快照 + 诊断结果 + 切片
+    CREATE TABLE IF NOT EXISTS sessions (
+        session_id      TEXT PRIMARY KEY,
+        learner_id      TEXT NOT NULL,
+        profile_json    TEXT NOT NULL,           -- 输入画像完整快照
+        gap_ids_json    TEXT,                    -- 诊断收敛的本体条目 ID
+        difficulty_level TEXT,                   -- beginner/intermediate/advanced
+        profile_summary TEXT,
+        plan_json       TEXT,                    -- 切片结果（含前置链）
+        status          TEXT NOT NULL DEFAULT 'active',
+        created_at      TEXT NOT NULL,
+        finished_at     TEXT
+    );
+
+    -- 统一事件流：裁判面渲染协议 + 回放媒体流 + 审计日志（一表三用）
+    CREATE TABLE IF NOT EXISTS session_events (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        learner_id  TEXT NOT NULL REFERENCES learners(id),
-        source      TEXT NOT NULL,   -- initial_test / assessment / feedback
-        detail      TEXT,
-        created_at  TEXT DEFAULT (datetime('now'))
+        session_id  TEXT NOT NULL,
+        seq         INTEGER NOT NULL,            -- 会话内单调递增，回放排序键
+        event_type  TEXT NOT NULL,              -- 协议见架构文档 §4
+        payload_json TEXT NOT NULL,             -- 自包含：前端仅凭 payload 可渲染
+        created_at  TEXT NOT NULL,
+        UNIQUE(session_id, seq)
     );
+    CREATE INDEX IF NOT EXISTS idx_events_session ON session_events(session_id, seq);
 
-    CREATE TABLE IF NOT EXISTS run_history (
-        id            TEXT PRIMARY KEY,
-        learner_id    TEXT NOT NULL REFERENCES learners(id),
-        status        TEXT DEFAULT 'pending',
-        start_at      TEXT,
-        end_at        TEXT,
-        state_snapshot TEXT,
-        created_at    TEXT DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE IF NOT EXISTS generated_resources (
-        id            INTEGER PRIMARY KEY AUTOINCREMENT,
-        run_id        TEXT NOT NULL REFERENCES run_history(id),
-        learner_id    TEXT NOT NULL REFERENCES learners(id),
-        resource_type TEXT NOT NULL, -- lecture / guide / quiz
-        content       TEXT NOT NULL, -- JSON
-        evidence_ids  TEXT,          -- JSON
-        review_verdict TEXT,
-        created_at    TEXT DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE IF NOT EXISTS conversation_logs (
+    -- 教学轮快照：题目/作答/判分/决策的结构化中间数据
+    CREATE TABLE IF NOT EXISTS topic_rounds (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        learner_id  TEXT NOT NULL REFERENCES learners(id),
-        source      TEXT NOT NULL,   -- user / agent-diagnose / agent-generate / agent-review
-        content     TEXT NOT NULL,
-        run_id      TEXT,
-        created_at  TEXT DEFAULT (datetime('now'))
+        session_id  TEXT NOT NULL,
+        entry_id    TEXT NOT NULL,
+        round_no    INTEGER NOT NULL,
+        question_json TEXT,                      -- 题目（题型/题干/选项）
+        expected_json TEXT,                      -- 判分要点（不进学生视野）
+        answer_text TEXT,
+        grade_json  TEXT,                        -- 覆盖率 + verdict + evaluation + missed
+        decision    TEXT,                        -- advance/retry/regress/scaffold
+        mastery_after REAL,
+        created_at  TEXT NOT NULL
     );
+    CREATE INDEX IF NOT EXISTS idx_rounds_session ON topic_rounds(session_id, entry_id);
 
-    CREATE TABLE IF NOT EXISTS assessment_results (
+    -- 掌握度历史：报告曲线与跨会话延续
+    CREATE TABLE IF NOT EXISTS mastery_snapshots (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        learner_id  TEXT NOT NULL REFERENCES learners(id),
-        run_id      TEXT REFERENCES run_history(id),
-        answers     TEXT NOT NULL,   -- JSON
-        score       REAL,
-        created_at  TEXT DEFAULT (datetime('now'))
+        session_id  TEXT NOT NULL,
+        learner_id  TEXT NOT NULL,
+        entry_id    TEXT NOT NULL,
+        round_no    INTEGER NOT NULL,
+        correctness INTEGER NOT NULL,            -- 0/1（脚手架答对不写入）
+        mastery_after REAL NOT NULL,
+        created_at  TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_mastery_session ON mastery_snapshots(session_id, entry_id);
+
+    -- 资源包：三形态资源 + 溯源链（赛题主交付物）
+    CREATE TABLE IF NOT EXISTS resource_packages (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id  TEXT NOT NULL,
+        learner_id  TEXT NOT NULL,
+        entry_id    TEXT NOT NULL,
+        lecture_json TEXT,                       -- 讲义：审核通过论断
+        questions_json TEXT,                     -- 分阶题：choice/scaffold/answer 归档
+        practice_json TEXT,                      -- 实操指南（procedure 条目）
+        challenge_json TEXT,                     -- 进阶挑战任务（mastery≥0.85）
+        difficulty_tier TEXT NOT NULL,           -- 资源难度层级（适配率指标输入）
+        created_at  TEXT NOT NULL,
+        UNIQUE(session_id, entry_id)
     );
 """
 
 
 class KnowledgeType(StrEnum):
-    """知识条目类型——决定后续出题题型（memory→选择题 / concept→复述题 / procedure→操作题）。"""
+    """知识条目类型——描述知识本体（影响教学方式与实操指南生成），不绑定题型（题型由掌握度驱动）。"""
 
     memory = "memory"  # 事实/定义/术语
     concept = "concept"  # 需理解的概念与关系
-    procedure = "procedure"  # 可操作的步骤技能
+    procedure = "procedure"  # 可操作的步骤技能（教学时产出实操指南）
 
 
 class SeedEntry(BaseModel):
@@ -246,28 +271,19 @@ def upsert_profile(db: sqlite3.Connection, profile: SeedProfile) -> None:
         "INSERT INTO learners(id, name) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET name=excluded.name",
         (profile.learner_id, profile.name),
     )
-    new_row = (
-        json.dumps(profile.background, ensure_ascii=False),
-        json.dumps(profile.mastery, ensure_ascii=False),
-        json.dumps(profile.style_tags, ensure_ascii=False),
-    )
-    old = db.execute(
-        "SELECT background, mastery, style_tags FROM learner_profiles WHERE learner_id=?",
-        (profile.learner_id,),
-    ).fetchone()
     db.execute(
         """INSERT INTO learner_profiles(learner_id, background, mastery, style_tags)
            VALUES (?, ?, ?, ?)
            ON CONFLICT(learner_id) DO UPDATE SET
              background=excluded.background, mastery=excluded.mastery,
              style_tags=excluded.style_tags, updated_at=datetime('now')""",
-        (profile.learner_id, *new_row),
+        (
+            profile.learner_id,
+            json.dumps(profile.background, ensure_ascii=False),
+            json.dumps(profile.mastery, ensure_ascii=False),
+            json.dumps(profile.style_tags, ensure_ascii=False),
+        ),
     )
-    if old is None or tuple(old) != new_row:
-        db.execute(
-            "INSERT INTO profile_updates(learner_id, source, detail) VALUES (?, 'initial_test', ?)",
-            (profile.learner_id, json.dumps({"method": "seed", "note": profile.note}, ensure_ascii=False)),
-        )
 
 
 def init_database(

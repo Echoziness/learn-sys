@@ -28,6 +28,7 @@ class AnswerOutcome:
     decision: NextStep  # advance / retry / regress
     attempts: int  # 该主题累计作答次数
     llm_reviewed: bool  # 是否经过 LLM 复核（false = 规则快路径/兜底）
+    missed_requirements: tuple[str, ...] = ()  # 题意核对：未满足的题目要求（审计用）
 
 
 async def process_answer(
@@ -60,6 +61,7 @@ async def process_answer(
         question.question_type == "choice" and not grade.is_correct
     )
     llm_reviewed = False
+    fb: dict = {}
     if need_llm:
         fb = await feedback_node(
             {
@@ -103,6 +105,7 @@ async def process_answer(
         decision=decision,
         attempts=len(history),
         llm_reviewed=llm_reviewed,
+        missed_requirements=tuple(fb.get("missed_requirements", []) if llm_reviewed else ()),
     )
 
 

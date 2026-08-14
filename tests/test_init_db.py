@@ -77,15 +77,15 @@ def test_init_twice_is_idempotent(seed_dir, tmp_path):
     db = sqlite3.connect(db_path)
     db.enable_load_extension(True)
     sqlite_vec.load(db)
-    # 画像未变化时不重复记录 profile_updates
-    updates = db.execute("SELECT count(*) FROM profile_updates WHERE learner_id='u1'").fetchone()[0]
+    # 画像幂等：learner_profiles 只有一行
+    profiles = db.execute("SELECT count(*) FROM learner_profiles WHERE learner_id='u1'").fetchone()[0]
     # knowledge_type 落库：显式值与默认值（concept）
     types = {
         eid: kt
         for eid, kt in db.execute("SELECT id, knowledge_type FROM knowledge_entries")
     }
     db.close()
-    assert updates == 1
+    assert profiles == 1
     assert types == {"T-001": "memory", "T-002": "concept"}
 
 

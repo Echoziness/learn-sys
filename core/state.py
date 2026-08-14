@@ -33,10 +33,11 @@ class DraftClaim(BaseModel):
     claim_index: int
     text: str
     evidence_ids: list[str] = Field(min_length=1)  # 生产约束：无证据的论断在 schema 层即拒绝
-    claim_type: Literal["core", "extension"] = "core"
+    claim_type: Literal["core", "extension", "procedure_guide"] = "core"
     # core=条目覆盖层（严格证据链，NLI 逐字核对）；
     # extension=错因扩展层（仅重教轮出现，针对学生错因的应用级讲解，
-    # 允许推导/示例，审核降为"概念一致 + 推导自洽"）
+    # 允许推导/示例，审核降为"概念一致 + 推导自洽"）；
+    # procedure_guide=实操指南步骤（仅 procedure 条目，步骤+示例+检查点）
 
 
 class ReviewNote(BaseModel):
@@ -86,6 +87,3 @@ class AgentState(TypedDict, total=False):
     review_round: int
     review_history: Annotated[list[ReviewNote], operator.add]
     last_review_feedback: str
-
-    final_resources: dict
-    assessment_results: dict
