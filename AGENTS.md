@@ -36,9 +36,9 @@ learn-sys/
 │   ├── plan.py              # 课程切片（纯函数：gap匹配+前置链闭包+难度过滤+拓扑排序）+ KnowledgeEntry 模型
 │   ├── assess.py            # 确定性出题/判分（纯函数：掌握度驱动题型——低掌握度选择题/高掌握度回答题，fail-closed）
 │   ├── answer_pipeline.py     # 作答处理管线（判分→LLM复核→掌握度→决策，CLI/Web 共用入口）
-│   ├── session.py             # SessionStore：会话/事件流/轮次/资源包 DB 读写 + 事件发射（W1，设计见架构文档 §3/§4）
-│   ├── teach_loop.py          # 会话编排服务：诊断→切片→逐主题循环，CLI/Web 共用（W1，自 run_cli 抽取）
-│   ├── deliver.py             # 资源包组装：三形态 + 溯源链 + 进阶标记（W1）
+│   ├── session.py             # SessionStore：会话/事件流/轮次/资源包 DB 读写 + 事件发射（设计见架构文档 §3/§4）
+│   ├── teach_loop.py          # 会话编排服务：诊断→切片→逐主题循环，CLI/Web 共用
+│   ├── deliver.py             # 资源包组装：三形态 + 溯源链 + 进阶标记
 │   ├── llm.py               # LLMProvider（AsyncOpenAI，显式 180s 读取超时）+ chat_validated 校验重试
 │   ├── retrieval.py         # Retriever 类：FTS5(CJK逐字切分) + sqlite-vec + RRF + 覆盖度判定
 │   ├── embedding.py         # BGEEncoder（仅组合根 import，加载 ~2GB 模型）
@@ -58,8 +58,8 @@ learn-sys/
 │   └── knowledge.db         # 知识库 + FTS5 + vec + 会话/事件/资源包（单文件，由 init_db 生成）
 ├── tests/                   # pytest，与 evals/metrics.py 同口径
 ├── evals/                   # metrics.py（三指标口径 SSOT）+ profiles/（50 组）+ run.py（W2）
-├── web/                     # Next.js 15：学生面 / 裁判面(orchestration) / 报告(report)（W1 脚手架）
-└── docker-compose.yml       # api + web + db-init（W1 骨架）
+├── web/                     # Next.js 15：学生面 / 裁判面(orchestration) / 报告(report)（脚手架完成，三画面 W2 实现）
+└── docker-compose.yml       # api + web + db-init（三服务已验收：db-init → api healthy → web）
 ```
 
 ## 3. 架构
@@ -180,6 +180,10 @@ diagnose（LLM 一次，输出 gap_ids）→ plan（确定性切片：ID 投影 
 | api 启动即 ImportError（circular import） | routes 从 api.main 导入 sse_frame，main 又 import routes——模块级互相引用 | 工具函数放独立模块（api/sse.py），main 只做工厂与装配 |
 | 容器内前端连不上 API | `NEXT_PUBLIC_*` 是 Next.js 构建时内联变量，运行时 environment 不生效 | 走 build args：Dockerfile `ARG` + `ENV` 在 `pnpm build` 前，compose `build.args` 传入 |
 | docker 容器内 BGE 联网探测卡启动 | sentence-transformers 默认查 Hub 更新 | 容器 `HF_HUB_OFFLINE=1`（模型随 data/ 卷挂载，全离线） |
+| `docker compose build` 卡 npm/pypi 下载，报 `ENETUNREACH` | daemon 的 systemd 代理 env 只作用于 `docker pull`，不注入 BuildKit 构建容器；构建容器在独立 netns 也摸不到宿主 127.0.0.1 代理 | 组合拳：`~/.docker/config.json` 配 `proxies`（CLI 侧，BuildKit 自动注入构建步骤）+ compose `build.network: host`（容器内 127.0.0.1 直达宿主代理）；交付环境无 proxies 配置时构建走直连，不受影响 |
+| 容器 runtime 内 LLM 报 `Connection error`（`Connection refused`） | Docker 29 会把 `~/.docker/config.json` 的 proxies 注入 runtime 容器——容器内 `127.0.0.1:7897` 是自身 loopback，无代理监听 | compose `environment` 显式置空代理 env（`HTTP_PROXY: ""` 等）——runtime 走 LLM 直连；build 与 runtime 的网络策略独立 |
+| ghcr 镜像拉取报 `403 Forbidden`/`EOF` | 两个独立根因、症状相同：①ghcr.io 对**不存在的 repo 也回 403**（而非 not found）——镜像名写错与网络不通无法区分，排查时先核对名字；②`registry-mirrors`（daemon.json）只代理 docker.io，ghcr.io 不走加速 | 拉取前先 `docker pull` 验证；ghcr 用专属镜像站（`ghcr.m.daocloud.io`）或代理直连 |
+| BuildKit 报 `variable expansion is not supported for --from` | `COPY --from=${ARG}` 不支持变量展开 | ARG 放首个 FROM 前（全局作用域）+ `FROM ${UV_IMAGE} AS uv` 独立 stage，再 `COPY --from=uv` |
 
 ## 7. 开发模式（AI 生成代码遵循以下流程）
 
