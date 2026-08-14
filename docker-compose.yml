@@ -11,6 +11,14 @@ services:
     env_file: .env
     environment:
       HF_HUB_OFFLINE: "1" # 模型随 data/ 卷挂载，禁止容器内联网探测
+      # runtime 清空代理（config.json 的 proxies 注入指向容器内不存在的
+      # 127.0.0.1:7897 → refused）；LLM 走直连（api.deepseek.com 国内可达）
+      HTTP_PROXY: ""
+      HTTPS_PROXY: ""
+      http_proxy: ""
+      https_proxy: ""
+      NO_PROXY: "*"
+      no_proxy: "*"
     command: ["uv", "run", "--no-dev", "python", "scripts/init_db.py"]
 
   api:
@@ -26,6 +34,12 @@ services:
     env_file: .env
     environment:
       HF_HUB_OFFLINE: "1"
+      HTTP_PROXY: ""
+      HTTPS_PROXY: ""
+      http_proxy: ""
+      https_proxy: ""
+      NO_PROXY: "*"
+      no_proxy: "*"
     depends_on:
       db-init:
         condition: service_completed_successfully
