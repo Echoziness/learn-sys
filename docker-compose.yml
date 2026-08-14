@@ -2,6 +2,7 @@ services:
   db-init:
     build:
       context: .
+      network: host # 构建容器共享宿主网络：127.0.0.1 代理可达（~/.docker/config.json 注入代理 env）
       args:
         # ghcr.io 不可达时经 .env 覆盖：UV_IMAGE=ghcr.m.daocloud.io/astral-sh/uv:latest
         UV_IMAGE: ${UV_IMAGE:-ghcr.io/astral-sh/uv:latest}
@@ -15,6 +16,7 @@ services:
   api:
     build:
       context: .
+      network: host
       args:
         UV_IMAGE: ${UV_IMAGE:-ghcr.io/astral-sh/uv:latest}
     ports:
@@ -38,6 +40,7 @@ services:
   web:
     build:
       context: ./web
+      network: host
       args:
         NEXT_PUBLIC_API_URL: http://localhost:8000 # build 时内联（运行时 env 无效）
     ports:
