@@ -1,6 +1,10 @@
 services:
   db-init:
-    build: .
+    build:
+      context: .
+      args:
+        # ghcr.io 不可达时经 .env 覆盖：UV_IMAGE=ghcr.m.daocloud.io/astral-sh/uv:latest
+        UV_IMAGE: ${UV_IMAGE:-ghcr.io/astral-sh/uv:latest}
     volumes:
       - ./data:/app/data
     env_file: .env
@@ -9,7 +13,10 @@ services:
     command: ["uv", "run", "--no-dev", "python", "scripts/init_db.py"]
 
   api:
-    build: .
+    build:
+      context: .
+      args:
+        UV_IMAGE: ${UV_IMAGE:-ghcr.io/astral-sh/uv:latest}
     ports:
       - "8000:8000"
     volumes:
