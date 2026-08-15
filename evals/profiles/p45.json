@@ -1,0 +1,15 @@
+{
+  "learner_id": "p45",
+  "name": "本科大二·电子信息（45）",
+  "background": {
+    "education": "本科大二",
+    "major": "电子信息",
+    "goal": "转行数据分析",
+    "experience": "熟悉统计建模与 R 语言，用过 MySQL，Python 会写自动化脚本"
+  },
+  "mastery": {},
+  "style_tags": [
+    "concise"
+  ],
+  "expect_level": "advanced"
+}

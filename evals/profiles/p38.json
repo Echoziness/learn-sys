@@ -1,0 +1,16 @@
+{
+  "learner_id": "p38",
+  "name": "本科毕业 1 年·土木工程",
+  "background": {
+    "education": "本科毕业 1 年",
+    "major": "土木工程",
+    "goal": "胜任现有岗位的数据工作",
+    "experience": "未接触过数据库、SQL 和任何编程语言，仅会 Office 基础操作"
+  },
+  "mastery": {},
+  "style_tags": [
+    "analogy-first",
+    "step-by-step"
+  ],
+  "expect_level": "beginner"
+}

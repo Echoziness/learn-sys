@@ -1,0 +1,16 @@
+{
+  "learner_id": "p01",
+  "name": "零基础转行者·文科背景",
+  "background": {
+    "education": "本科毕业 3 年",
+    "major": "汉语言文学",
+    "goal": "转行数据运营",
+    "experience": "仅会 Office 基础操作，未接触过数据库、SQL 和任何编程语言"
+  },
+  "mastery": {},
+  "style_tags": [
+    "analogy-first",
+    "step-by-step"
+  ],
+  "note": "手工精设：绝对零基础——检验 beginner 难度闸门与生活类比教学"
+}

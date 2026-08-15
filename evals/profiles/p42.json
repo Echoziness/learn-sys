@@ -1,0 +1,15 @@
+{
+  "learner_id": "p42",
+  "name": "硕士毕业·市场营销",
+  "background": {
+    "education": "硕士毕业",
+    "major": "市场营销",
+    "goal": "拿到数据分析实习",
+    "experience": "数据岗在职，日常用 SQL + Python，想补机器学习前的数据工程基础"
+  },
+  "mastery": {},
+  "style_tags": [
+    "analogy-first"
+  ],
+  "expect_level": "advanced"
+}

@@ -57,7 +57,7 @@ learn-sys/
 │   ├── seeds/profiles/*.json         # 学习者画像种子
 │   └── knowledge.db         # 知识库 + FTS5 + vec + 会话/事件/资源包（单文件，由 init_db 生成）
 ├── tests/                   # pytest，与 evals/metrics.py 同口径
-├── evals/                   # metrics.py（三指标口径 SSOT）+ profiles/（50 组）+ run.py（W2）
+├── evals/                   # metrics.py（三指标口径 SSOT）+ profiles/（50 组）+ gen_profiles.py（可复现生成）+ run.py（并发跑批/断点续跑）
 ├── web/                     # Next.js 15：学生面 / 裁判面(orchestration) / 报告(report)（脚手架完成，三画面 W2 实现）
 └── docker-compose.yml       # api + web + db-init（三服务已验收：db-init → api healthy → web）
 ```
@@ -196,6 +196,8 @@ diagnose（LLM 一次，输出 gap_ids）→ plan（确定性切片：ID 投影 
 | 场景题学生答实例词被判"没提到术语"（覆盖率 0%，连错放逐） | 题目措辞邀请实例答案（"用什么标识学生"→答"学号"），expected 却只认条目抽象术语（"主键"）——判分锚定术语黑话 | expected 双类要点强制（概念术语 + 题干实例词），校验源放宽到 content ∪ 题干；裁决权归 LLM 题意核对（同义表达判 correct） |
 | 学生答错后题目反而更难（死亡螺旋：错→重教加深→题更深→再错→regress） | 出题深度跟随"最新教学轮"而非"学生状态"——重教轮 extension 论断（深水区）进了出题上下文，且无已出题清单（换皮重考） | retry 信号（遗漏清单+连错次数）注入出题：只针对最重要遗漏要点降维出题；extension 失败后禁入题；previous_questions 防重考 |
 | 脚手架题干问"正确做法"但选项是关键词堆（语义崩坏） | 题干模板与选项格式独立拼接——LLM 干扰项生成时看不到最终题干 | LLM 一次生成完整三件套（题干+正确项+干扰项），服务端校验（词重叠+互异），失败回退时题干改为与关键词堆匹配的问法 |
+| 评测聚合幻觉率虚高至 96%（实际 <10%） | teach_delivered 事件的 claim_index 是**事件内局部编号**，跨事件聚合时全局重编号但 verdicts 没同步偏移——裁决全部落空，fail-closed 记 unsupported | 聚合时 claims 与 verdicts 同用 base 偏移（`base + 局部编号`），见 evals/run.py |
+| choice 答对轮幻觉率超标（实测 6-25%） | `_ADVANCE_HINT` 引导 LLM 讲"常见误解/易错点/选型建议"——条目里没有这些内容，审核（正确地）判 unsupported | 推进提示限定"条目概念范围内的深化"，GENERATE_PROMPT 显式声明扩展性内容会被打回——生成端与审核锚点必须同源，不能一边引导发散一边严格拦截 |
 
 ## 7. 开发模式（AI 生成代码遵循以下流程）
 
@@ -219,6 +221,7 @@ uv run pyright core/ scripts/ tests/ api/        # Python 类型检查
 uv run ruff check .                              # Python lint（E/F/W/I/UP/B/SIM）
 cd web && pnpm typecheck && pnpm lint            # 前端类型检查
 uv run python scripts/init_db.py                 # 初始化知识库 + 会话表（幂等）
-uv run python evals/run.py                       # 评测（W2）
+uv run python evals/run.py --limit 5            # 评测小批（先验幻觉率，超标即调）
+uv run python evals/run.py                       # 评测全量 50 组（并发 5，~30 分钟）
 docker compose up --build                        # 交付启动
 ```

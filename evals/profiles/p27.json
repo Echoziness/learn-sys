@@ -1,0 +1,15 @@
+{
+  "learner_id": "p27",
+  "name": "本科大三·人力资源管理",
+  "background": {
+    "education": "本科大三",
+    "major": "人力资源管理",
+    "goal": "为考研大数据方向做准备",
+    "experience": "工作中有 SQL 取数经验，熟悉 pandas，想系统补统计基础"
+  },
+  "mastery": {},
+  "style_tags": [
+    "code-first"
+  ],
+  "expect_level": "advanced"
+}

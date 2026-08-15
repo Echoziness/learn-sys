@@ -1,0 +1,15 @@
+{
+  "learner_id": "p30",
+  "name": "本科毕业 3 年·物流管理（30）",
+  "background": {
+    "education": "本科毕业 3 年",
+    "major": "物流管理",
+    "goal": "提升职场竞争力",
+    "experience": "会写简单 Python 脚本处理 Excel，未系统学过数据库"
+  },
+  "mastery": {},
+  "style_tags": [
+    "step-by-step"
+  ],
+  "expect_level": "intermediate"
+}

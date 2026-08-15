@@ -1,0 +1,15 @@
+{
+  "learner_id": "p10",
+  "name": "专科毕业 2 年·电子信息",
+  "background": {
+    "education": "专科毕业 2 年",
+    "major": "电子信息",
+    "goal": "转行数据运营",
+    "experience": "熟悉统计建模与 R 语言，用过 MySQL，Python 会写自动化脚本"
+  },
+  "mastery": {},
+  "style_tags": [
+    "code-first"
+  ],
+  "expect_level": "advanced"
+}

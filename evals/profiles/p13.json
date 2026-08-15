@@ -1,0 +1,15 @@
+{
+  "learner_id": "p13",
+  "name": "本科毕业 3 年·化学",
+  "background": {
+    "education": "本科毕业 3 年",
+    "major": "化学",
+    "goal": "提升职场竞争力",
+    "experience": "学过 C 语言基础，会用 Excel 做简单统计，未接触过数据库和 Python"
+  },
+  "mastery": {},
+  "style_tags": [
+    "code-first"
+  ],
+  "expect_level": "beginner"
+}

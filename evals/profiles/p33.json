@@ -1,0 +1,15 @@
+{
+  "learner_id": "p33",
+  "name": "本科大二·工商管理学",
+  "background": {
+    "education": "本科大二",
+    "major": "工商管理学",
+    "goal": "转行数据运营",
+    "experience": "学过 C 语言基础，会用 Excel 做简单统计，未接触过数据库和 Python"
+  },
+  "mastery": {},
+  "style_tags": [
+    "concise"
+  ],
+  "expect_level": "beginner"
+}

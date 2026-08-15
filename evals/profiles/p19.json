@@ -1,0 +1,15 @@
+{
+  "learner_id": "p19",
+  "name": "本科毕业 1 年·电气工程",
+  "background": {
+    "education": "本科毕业 1 年",
+    "major": "电气工程",
+    "goal": "胜任现有岗位的数据工作",
+    "experience": "熟悉统计建模与 R 语言，用过 MySQL，Python 会写自动化脚本"
+  },
+  "mastery": {},
+  "style_tags": [
+    "step-by-step"
+  ],
+  "expect_level": "advanced"
+}

@@ -1,0 +1,15 @@
+{
+  "learner_id": "p49",
+  "name": "本科大三·电气工程",
+  "background": {
+    "education": "本科大三",
+    "major": "电气工程",
+    "goal": "转行数据分析",
+    "experience": "学过 C 语言基础，会用 Excel 做简单统计，未接触过数据库和 Python"
+  },
+  "mastery": {},
+  "style_tags": [
+    "analogy-first"
+  ],
+  "expect_level": "beginner"
+}

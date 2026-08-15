@@ -1,0 +1,74 @@
+{
+  "summary": {
+    "n_profiles": 2,
+    "sim_rate": 0.8,
+    "hallucination_rate": 0.0094,
+    "tier_match_rate": 0.8889,
+    "keyword_coverage": 0.8718,
+    "mastery_mean": 0.7861,
+    "level_accuracy": 0.0,
+    "targets": {
+      "hallucination_rate": "<0.05",
+      "tier_match_rate": ">=0.85",
+      "keyword_coverage": ">=0.90"
+    }
+  },
+  "results": [
+    {
+      "learner_id": "p01",
+      "name": "零基础转行者·文科背景",
+      "expect_level": "",
+      "diagnosed_level": "beginner",
+      "session_id": "5dd139a307ec49e68d1684738faf7141",
+      "hallucination_rate": 0.0,
+      "claims_total": 59,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 4,
+        "total": 4
+      },
+      "keyword_coverage": {
+        "rate": 0.8333,
+        "hit": 15,
+        "total": 18
+      },
+      "topics_advanced": 4,
+      "mastery_mean": 0.7721,
+      "masteries": {
+        "关系型数据库基本概念": 0.8,
+        "pandas DataFrame 基础": 0.661,
+        "SELECT 基础查询": 0.8,
+        "ORDER BY 与 LIMIT": 0.8,
+        "WHERE 条件过滤": 0.8
+      }
+    },
+    {
+      "learner_id": "p02",
+      "name": "工科在读·有编程基础",
+      "expect_level": "",
+      "diagnosed_level": "beginner",
+      "session_id": "c191c90d713243848ad155d2b3e47de4",
+      "hallucination_rate": 0.0213,
+      "claims_total": 47,
+      "tier_match": {
+        "rate": 0.8,
+        "matched": 4,
+        "total": 5
+      },
+      "keyword_coverage": {
+        "rate": 0.9048,
+        "hit": 19,
+        "total": 21
+      },
+      "topics_advanced": 5,
+      "mastery_mean": 0.8,
+      "masteries": {
+        "关系型数据库基本概念": 0.8,
+        "pandas DataFrame 基础": 0.8,
+        "SELECT 基础查询": 0.8,
+        "pandas 数据过滤与排序": 0.8,
+        "WHERE 条件过滤": 0.8
+      }
+    }
+  ]
+}

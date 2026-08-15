@@ -1,0 +1,15 @@
+{
+  "learner_id": "p14",
+  "name": "本科毕业 1 年·会计学",
+  "background": {
+    "education": "本科毕业 1 年",
+    "major": "会计学",
+    "goal": "转行数据运营",
+    "experience": "用过 SQL 做增删改查，Python 会 pandas 基础操作"
+  },
+  "mastery": {},
+  "style_tags": [
+    "code-first"
+  ],
+  "expect_level": "intermediate"
+}

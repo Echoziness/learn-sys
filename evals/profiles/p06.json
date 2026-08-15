@@ -1,0 +1,16 @@
+{
+  "learner_id": "p06",
+  "name": "本科大二·土木工程",
+  "background": {
+    "education": "本科大二",
+    "major": "土木工程",
+    "goal": "提升职场竞争力",
+    "experience": "用过 SQL 做增删改查，Python 会 pandas 基础操作"
+  },
+  "mastery": {},
+  "style_tags": [
+    "analogy-first",
+    "step-by-step"
+  ],
+  "expect_level": "intermediate"
+}

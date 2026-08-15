@@ -1,0 +1,15 @@
+{
+  "learner_id": "p50",
+  "name": "本科大四·英语（50）",
+  "background": {
+    "education": "本科大四",
+    "major": "英语",
+    "goal": "搭建业务数据看板",
+    "experience": "数据岗在职，日常用 SQL + Python，想补机器学习前的数据工程基础"
+  },
+  "mastery": {},
+  "style_tags": [
+    "analogy-first"
+  ],
+  "expect_level": "advanced"
+}

@@ -1,0 +1,15 @@
+{
+  "learner_id": "p37",
+  "name": "专科毕业 2 年·新闻传播学",
+  "background": {
+    "education": "专科毕业 2 年",
+    "major": "新闻传播学",
+    "goal": "搭建业务数据看板",
+    "experience": "学过 C 语言基础，会用 Excel 做简单统计，未接触过数据库和 Python"
+  },
+  "mastery": {},
+  "style_tags": [
+    "analogy-first"
+  ],
+  "expect_level": "beginner"
+}

@@ -1,0 +1,15 @@
+{
+  "learner_id": "p40",
+  "name": "本科大二·工商管理学（40）",
+  "background": {
+    "education": "本科大二",
+    "major": "工商管理学",
+    "goal": "转行数据运营",
+    "experience": "未接触过数据库、SQL 和任何编程语言，仅会 Office 基础操作"
+  },
+  "mastery": {},
+  "style_tags": [
+    "step-by-step"
+  ],
+  "expect_level": "beginner"
+}

@@ -1,0 +1,15 @@
+{
+  "learner_id": "p29",
+  "name": "本科毕业 3 年·物流管理",
+  "background": {
+    "education": "本科毕业 3 年",
+    "major": "物流管理",
+    "goal": "拿到数据分析实习",
+    "experience": "学过 C 语言基础，会用 Excel 做简单统计，未接触过数据库和 Python"
+  },
+  "mastery": {},
+  "style_tags": [
+    "concise"
+  ],
+  "expect_level": "beginner"
+}

@@ -1,0 +1,15 @@
+{
+  "learner_id": "p08",
+  "name": "硕士毕业·护理学",
+  "background": {
+    "education": "硕士毕业",
+    "major": "护理学",
+    "goal": "为考研大数据方向做准备",
+    "experience": "未接触过数据库、SQL 和任何编程语言，仅会 Office 基础操作"
+  },
+  "mastery": {},
+  "style_tags": [
+    "analogy-first"
+  ],
+  "expect_level": "beginner"
+}

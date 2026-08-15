@@ -1,0 +1,15 @@
+{
+  "learner_id": "p26",
+  "name": "硕士毕业·物流管理",
+  "background": {
+    "education": "硕士毕业",
+    "major": "物流管理",
+    "goal": "为考研大数据方向做准备",
+    "experience": "未接触过数据库、SQL 和任何编程语言，仅会 Office 基础操作"
+  },
+  "mastery": {},
+  "style_tags": [
+    "concise"
+  ],
+  "expect_level": "beginner"
+}

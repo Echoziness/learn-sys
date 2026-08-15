@@ -1,0 +1,15 @@
+{
+  "learner_id": "p47",
+  "name": "硕士毕业·计算机科学",
+  "background": {
+    "education": "硕士毕业",
+    "major": "计算机科学",
+    "goal": "转行商业分析",
+    "experience": "会写简单 Python 脚本处理 Excel，未系统学过数据库"
+  },
+  "mastery": {},
+  "style_tags": [
+    "step-by-step"
+  ],
+  "expect_level": "intermediate"
+}

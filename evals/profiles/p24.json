@@ -1,0 +1,15 @@
+{
+  "learner_id": "p24",
+  "name": "硕士毕业·土木工程",
+  "background": {
+    "education": "硕士毕业",
+    "major": "土木工程",
+    "goal": "转行数据分析",
+    "experience": "学过 C 语言基础，会用 Excel 做简单统计，未接触过数据库和 Python"
+  },
+  "mastery": {},
+  "style_tags": [
+    "analogy-first"
+  ],
+  "expect_level": "beginner"
+}

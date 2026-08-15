@@ -1,0 +1,15 @@
+{
+  "learner_id": "p28",
+  "name": "本科毕业 3 年·英语",
+  "background": {
+    "education": "本科毕业 3 年",
+    "major": "英语",
+    "goal": "拿到数据分析实习",
+    "experience": "数据岗在职，日常用 SQL + Python，想补机器学习前的数据工程基础"
+  },
+  "mastery": {},
+  "style_tags": [
+    "code-first"
+  ],
+  "expect_level": "advanced"
+}

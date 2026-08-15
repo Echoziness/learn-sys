@@ -1,0 +1,16 @@
+{
+  "learner_id": "p22",
+  "name": "本科大四·工商管理学",
+  "background": {
+    "education": "本科大四",
+    "major": "工商管理学",
+    "goal": "为考研大数据方向做准备",
+    "experience": "熟悉统计建模与 R 语言，用过 MySQL，Python 会写自动化脚本"
+  },
+  "mastery": {},
+  "style_tags": [
+    "analogy-first",
+    "step-by-step"
+  ],
+  "expect_level": "advanced"
+}

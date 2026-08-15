@@ -1,0 +1,16 @@
+{
+  "learner_id": "p36",
+  "name": "硕士在读·市场营销",
+  "background": {
+    "education": "硕士在读",
+    "major": "市场营销",
+    "goal": "提升职场竞争力",
+    "experience": "学过数据库原理课程，会多表 JOIN 查询，Python 仅会调包"
+  },
+  "mastery": {},
+  "style_tags": [
+    "code-first",
+    "concise"
+  ],
+  "expect_level": "intermediate"
+}

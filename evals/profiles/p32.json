@@ -1,0 +1,15 @@
+{
+  "learner_id": "p32",
+  "name": "本科大二·电子信息",
+  "background": {
+    "education": "本科大二",
+    "major": "电子信息",
+    "goal": "胜任现有岗位的数据工作",
+    "experience": "学过数据库原理课程，会多表 JOIN 查询，Python 仅会调包"
+  },
+  "mastery": {},
+  "style_tags": [
+    "analogy-first"
+  ],
+  "expect_level": "intermediate"
+}

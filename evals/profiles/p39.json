@@ -1,0 +1,15 @@
+{
+  "learner_id": "p39",
+  "name": "本科毕业 1 年·护理学",
+  "background": {
+    "education": "本科毕业 1 年",
+    "major": "护理学",
+    "goal": "提升职场竞争力",
+    "experience": "未接触过数据库、SQL 和任何编程语言，仅会 Office 基础操作"
+  },
+  "mastery": {},
+  "style_tags": [
+    "code-first"
+  ],
+  "expect_level": "beginner"
+}

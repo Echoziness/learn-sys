@@ -1,0 +1,15 @@
+{
+  "learner_id": "p07",
+  "name": "本科大二·人力资源管理",
+  "background": {
+    "education": "本科大二",
+    "major": "人力资源管理",
+    "goal": "提升职场竞争力",
+    "experience": "熟悉统计建模与 R 语言，用过 MySQL，Python 会写自动化脚本"
+  },
+  "mastery": {},
+  "style_tags": [
+    "analogy-first"
+  ],
+  "expect_level": "advanced"
+}

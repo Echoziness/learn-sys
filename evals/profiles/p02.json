@@ -1,0 +1,15 @@
+{
+  "learner_id": "p02",
+  "name": "工科在读·有编程基础",
+  "background": {
+    "education": "本科大三",
+    "major": "机械工程",
+    "goal": "拿到数据分析实习",
+    "experience": "学过 C 语言和数据结构，会用 Excel 做透视表，未接触过数据库和 Python"
+  },
+  "mastery": {},
+  "style_tags": [
+    "code-first"
+  ],
+  "note": "手工精设：有编程迁移能力——检验 intermediate 判定与代码优先风格"
+}

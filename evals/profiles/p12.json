@@ -1,0 +1,15 @@
+{
+  "learner_id": "p12",
+  "name": "硕士毕业·人力资源管理",
+  "background": {
+    "education": "硕士毕业",
+    "major": "人力资源管理",
+    "goal": "转行数据运营",
+    "experience": "熟悉统计建模与 R 语言，用过 MySQL，Python 会写自动化脚本"
+  },
+  "mastery": {},
+  "style_tags": [
+    "code-first"
+  ],
+  "expect_level": "advanced"
+}

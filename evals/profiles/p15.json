@@ -1,0 +1,15 @@
+{
+  "learner_id": "p15",
+  "name": "硕士在读·金融学",
+  "background": {
+    "education": "硕士在读",
+    "major": "金融学",
+    "goal": "搭建业务数据看板",
+    "experience": "工作中有 SQL 取数经验，熟悉 pandas，想系统补统计基础"
+  },
+  "mastery": {},
+  "style_tags": [
+    "analogy-first"
+  ],
+  "expect_level": "advanced"
+}

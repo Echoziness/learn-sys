@@ -1,0 +1,16 @@
+{
+  "learner_id": "p44",
+  "name": "硕士在读·化学（44）",
+  "background": {
+    "education": "硕士在读",
+    "major": "化学",
+    "goal": "转行商业分析",
+    "experience": "熟悉统计建模与 R 语言，用过 MySQL，Python 会写自动化脚本"
+  },
+  "mastery": {},
+  "style_tags": [
+    "code-first",
+    "concise"
+  ],
+  "expect_level": "advanced"
+}

@@ -1,0 +1,16 @@
+{
+  "learner_id": "p25",
+  "name": "本科大四·英语",
+  "background": {
+    "education": "本科大四",
+    "major": "英语",
+    "goal": "转行数据运营",
+    "experience": "熟悉统计建模与 R 语言，用过 MySQL，Python 会写自动化脚本"
+  },
+  "mastery": {},
+  "style_tags": [
+    "code-first",
+    "concise"
+  ],
+  "expect_level": "advanced"
+}
