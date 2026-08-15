@@ -78,10 +78,8 @@ def _build_answer(qid: str, entry: KnowledgeEntry) -> Question:
     return Question(
         question_id=qid,
         entry_id=entry.id,
-        prompt=(
-            f"请用自己的话解释：「{entry.title}」。"
-            f"作答中尽量覆盖以下要点：{('、'.join(keywords)) or '（无）'}"
-        ),
+        # 模板题（LLM 失败回退）：题干不得剧透判分要点——评估有效性优先
+        prompt=f"请用自己的话解释「{entry.title}」：它是什么、有什么作用、和相关的概念是什么关系？",
         question_type="answer",
         expected_keywords=keywords,
     )

@@ -104,12 +104,12 @@ diagnose（LLM 一次，输出 gap_ids）→ plan（确定性切片：ID 投影 
 |---|---|---|
 | diagnose | `learner_profile`, `test_results` | `gap_ids`（收敛到本体目录）, `gaps`, `profile_summary`, `difficulty_level` |
 | retrieve | `gaps`, `difficulty_level`, `anchor_entry` | `retrieved_entries`, `uncovered_gaps` |
-| generate | `retrieved_entries`, `anchor_entry`, `profile_summary`, `outline`, `last_review_feedback`, `retry_context`, `uncovered_gaps`, `difficulty_level` | `draft`, `cited_entries`（procedure 条目须含 procedure_guide 论断） |
+| generate | `retrieved_entries`, `anchor_entry`, `profile_summary`, `outline`, `last_review_feedback`, `retry_context`, `taught_previously`（重教轮已教论断，禁止复读）, `uncovered_gaps`, `difficulty_level` | `draft`, `cited_entries`（procedure 条目须含 procedure_guide 论断） |
 | review | `draft`, `cited_entries`, `review_round` | `review_history`(append), `review_round`, `last_review_feedback` |
 | plan（纯函数） | —（不入 state，teach_loop 直接调用） | — |
 | assess（纯函数） | 条目（KnowledgeEntry）+ 当前掌握度 | 题目（按掌握度选题型） |
 | feedback（LLM 节点） | 题目、作答、规则判分结果 | verdict / evaluation / missed_requirements |
-| question（LLM 节点） | 条目（id/title/content/keywords）+ taught_claims（本轮教学论断） | 题干 + expected（服务端校验字符出自 content） |
+| question（LLM 节点） | 条目（id/title/content/keywords）+ taught_claims（带 claim_type）+ retry 信号（失败降维）+ difficulty_level + previous_questions（防重考） | 题干 + expected（服务端校验字符出自 content ∪ 题干） |
 | answer_pipeline（服务函数） | 题目、作答、掌握度历史 | AnswerOutcome（判分/评估/决策/遗漏清单，CLI 与 Web 共用） |
 | deliver（纯函数，W1 已上线） | draft + review_history（或 teach_delivered 事件）、教学轮历史、knowledge_type、mastery | 讲义（仅 supported）/ 分阶题归档 / 实操指南 / 进阶挑战 / 难度层级 |
 
@@ -122,14 +122,19 @@ diagnose（LLM 一次，输出 gap_ids）→ plan（确定性切片：ID 投影 
 - 所有 agent 间消息用 Pydantic BaseModel / TypedDict 定义；
 - 掌握度数学只在 `core/mastery.py`（纯函数：recency-weighted + 置信度封顶 + 门槛 0.7 + 连错 2 次降维），新增教学数值必须落在此处，禁止散落各节点；
 - 出题/判分只在 `core/assess.py`（fail-closed：无 expected 关键词即判错，绝不判对）；expected 永不进学生视野（只落 topic_rounds.expected_json，不进事件流）；
-- 题型仅两种且与知识类型解耦：choice（选择题，识别式）与 answer（回答题，回忆式），由掌握度驱动（<0.5 选择 / ≥0.5 回答，对齐 PRD 阶梯）；选择题干扰项从其他条目关键词确定性构造（不调 LLM），判分只认选项标签（贴全文不算对）；question_id 编码轮次与题型（`q_{entry}_r{round}_{type}`），资源包按 id 去重时不同轮/题型不互相覆盖；
+- 题型仅两种且与知识类型解耦：choice（选择题，识别式）与 answer（回答题，回忆式），由掌握度驱动（<0.5 选择 / ≥0.5 回答，对齐 PRD 阶梯）；choice 干扰项 LLM 生成同域混淆概念组（`build_choice_distractors`，按 entry_id 缓存于 TeachLoop，判分只认选项标签），LLM 失败回退其他条目关键词堆的确定性构造；判分只认选项标签（贴全文不算对）；question_id 编码轮次与题型（`q_{entry}_r{round}_{type}`），资源包按 id 去重时不同轮/题型不互相覆盖；
+- 诊断必须可复现：diagnose 调用 temperature=0（同一画像两次诊断产出一致 gap_ids，切片稳定）；出题/脚手架/干扰项生成用低温度（0.2-0.3，同会话内防抖）；
 - **题型单向推进**：进入 answer 深度后不因单次失误降回泛化 choice（识别题会掩盖真实理解状态）——`build_question(floor_type=...)` 强制；真正降级由"连续 2 次答错 → regress"触发；
-- **脚手架选择题**：answer 失败后下轮先出脚手架（`core/agents/question.py` 的 `build_scaffold_distractors`）——正确项=条目 keywords，干扰项 LLM 生成且**首项必须是学生作答中的典型错误理解镜像**（对比发现自己的问题），LLM 失败回退确定性干扰项；脚手架答对回 answer，**答对不计入掌握度历史**（不打断连续错降维计数），答错计一次错；
-- **评估与裁决分离**：answer 题总是送 LLM 评估（覆盖率不足的作答最有教学价值，规则预筛只降级裁决不降级评估）；fail-closed 收口——LLM 判 correct 但规则覆盖率 <0.6 时维持判错且评估不采用 LLM 的（防放水+防"答对了"误导）；
+- **脚手架选择题**：answer 失败后下轮先出脚手架——`scaffold_node` LLM 一次生成完整三件套（题干 + 正确项 + 干扰项）：正确项是从本轮教学论断提炼的**完整陈述句**（不再是关键词堆），干扰项首项**镜像学生作答中的典型错误理解**（对比发现自己的问题）；服务端校验（结构长度 + 正确项与条目/论断词重叠 ≥2 token + 干扰项互异 ≥2 个），失败回退确定性构造（题干与关键词堆选项语义对齐）；脚手架答对回 answer，**答对不计入掌握度历史**（不打断连续错降维计数），答错计一次错；
+- **评估与裁决分离**：answer 题总是送 LLM 评估（覆盖率不足的作答最有教学价值，规则预筛只降级裁决不降级评估）；判定看理解、评估教行话（学生用非术语表达正确理解 → 判 correct + 评估建议规范术语，FEEDBACK_PROMPT 含校准示例）；
 - **题意核对硬收口**：feedback 复核强制拆"题目要求检查单"并输出 `missed_requirements`——LLM 判 correct 但遗漏清单非空时服务端硬降级 partial（expected 关键词覆盖率可能因 expected 不全而虚高，LLM 的遗漏清单是题意核对证据，防"漏答 LIMIT 仍判对"）；
-- answer 判分两级：规则预筛（覆盖率 <0.6 直接判错，裁决不放松）→ 覆盖达标送 LLM 复核（`core/agents/feedback.py`，可识别关键词罗列/逻辑错误并输出教学评估）；LLM 复核标准已校准——只有概念错误/漏答题目关键要求/答非所问才判 partial/incorrect，措辞不精确、换说法但意思正确判 correct；LLM 失败回退规则时要求关键词全覆盖（coverage=1.0）才判对；
-- 回答题题干与判分要点由 LLM 一起生成（`core/agents/question.py`，场景化提问，禁止问条目之外内容）；expected 服务端校验——字符必须全部出自条目 content（防 LLM 编造，`validate_expected_keywords` 纯函数可单测），校验失败回退条目 keywords；**题目中每个具体操作要求（数字/方向/关键字）必须对应一个 expected 要点**（宁多勿漏，否则漏答被判对）；pending 轮落库即缓存（teach_loop.next_question 幂等复用）；
-- **出题深度契约**：回答题必须注入本轮教学论断（`taught_claims`，取自最近一次 teach_delivered 事件）作为出题上限——学生只需运用已教概念即可作答，禁止问教学内容未覆盖的深度（防"教得浅、考得深"）；retry 重教后 delete_pending_rounds 作废旧题重生成；
+- answer 判分两级：规则预筛（覆盖率审计信号）→ 覆盖达标与否均送 LLM 复核裁决（`core/agents/feedback.py`，可识别关键词罗列/逻辑错误并输出教学评估）；LLM 复核标准已校准——衡量"意思"而非"用词"：实例/通俗说法表达同义判 correct，只有概念错误/漏答题目关键要求/答非所问才判 partial/incorrect；LLM 失败回退规则时要求关键词全覆盖（coverage=1.0）才判对；
+- 回答题模板兜底（LLM 失败回退）**不得在题干剧透判分要点**——题干列 expected 等于泄题，评估有效性优先；
+- 回答题题干与判分要点由 LLM 一起生成（`core/agents/question.py`，场景化提问，禁止问条目之外内容）；expected 服务端校验——字符必须全部出自条目 content **∪ LLM 自己的题干**（场景实例词如"学号"出自题干即合法——题目措辞邀请实例答案，expected 只认抽象术语会造成系统性误判），校验失败回退条目 keywords；**场景题 expected 必须同时含概念术语与题干实例词两类要点**（学生答任一类同义表达即命中规则覆盖）；**题目中每个具体操作要求（数字/方向/关键字）必须对应一个 expected 要点**（宁多勿漏，否则漏答被判对）；pending 轮落库即缓存（teach_loop.next_question 幂等复用）；
+- **出题降维契约**：学生刚答错时 `retry` 信号（遗漏清单 + 连错次数）注入出题上下文——下一题只针对最重要的一个遗漏要点出识别/理解级题，**深度不得升维**（题目深度跟随学生状态而非最新教学轮——重教轮 extension 论断是深水区内容，失败后禁止入题，防"失败后题反而更难"的死亡螺旋）；`previous_questions` 注入防换皮重考；
+- **裁决权归属**（2026-08-15 修订）：answer 题判分 = 规则预筛（审计信号）→ LLM 复核裁决（唯一能判"同义表达"的层）——LLM 判 correct 且题意核对无遗漏即采纳（学生用实例/通俗说法表达同义判对）；防放水三层：矛盾检测（feedback_node 内 correct+missed 非空 → 硬降 partial）、题意核对清单、后续轮兜底（题型单向推进 + advance 需多轮 mastery 门槛 + regress）；feedback LLM 失败回退规则时仍要求覆盖率 1.0 才判对（无语义证据时从严格则）；
+- **出题深度契约**：回答题必须注入本轮教学论断（`taught_claims`，取自最近一次 teach_delivered 事件，带 claim_type 分层）作为出题上限——学生只需运用已教概念即可作答，禁止问教学内容未覆盖的深度（防"教得浅、考得深"）；retry 重教后 delete_pending_rounds 作废旧题重生成；
+- **重教去重**：重教轮 `taught_previously`（此前各轮已教论断全文）注入 generate——禁止复读，重教必须给增量（错因应用/换角度深化/未覆盖细节），防每轮 60% 重复的复读机；
 - LLM 输出截断防护：`core/llm.py` 检查 finish_reason=length 显式抛 `LLMOutputError`（JSON 必然残缺，不做无意义重试）；
 - 知识条目必带 `knowledge_type`（`memory` 事实/定义/术语 / `concept` 概念与关系 / `procedure` 步骤技能，枚举在 `scripts/init_db.py.KnowledgeType`，DB 列 DEFAULT 'concept'），描述知识本体（影响教学方式/门槛/复习节奏），不绑定题型，core/plan.KnowledgeEntry 同持此字段（默认 concept）；
 - 新增种子条目 content 控制在 50-100 字（代码片段算字符），且每个关键词去空格后的全部字符必须出现在 content 里（判分靠子串，`tests/test_seeds.py` 全量校验）；
@@ -184,6 +189,9 @@ diagnose（LLM 一次，输出 gap_ids）→ plan（确定性切片：ID 投影 
 | 容器 runtime 内 LLM 报 `Connection error`（`Connection refused`） | Docker 29 会把 `~/.docker/config.json` 的 proxies 注入 runtime 容器——容器内 `127.0.0.1:7897` 是自身 loopback，无代理监听 | compose `environment` 显式置空代理 env（`HTTP_PROXY: ""` 等）——runtime 走 LLM 直连；build 与 runtime 的网络策略独立 |
 | ghcr 镜像拉取报 `403 Forbidden`/`EOF` | 两个独立根因、症状相同：①ghcr.io 对**不存在的 repo 也回 403**（而非 not found）——镜像名写错与网络不通无法区分，排查时先核对名字；②`registry-mirrors`（daemon.json）只代理 docker.io，ghcr.io 不走加速 | 拉取前先 `docker pull` 验证；ghcr 用专属镜像站（`ghcr.m.daocloud.io`）或代理直连 |
 | BuildKit 报 `variable expansion is not supported for --from` | `COPY --from=${ARG}` 不支持变量展开 | ARG 放首个 FROM 前（全局作用域）+ `FROM ${UV_IMAGE} AS uv` 独立 stage，再 `COPY --from=uv` |
+| 场景题学生答实例词被判"没提到术语"（覆盖率 0%，连错放逐） | 题目措辞邀请实例答案（"用什么标识学生"→答"学号"），expected 却只认条目抽象术语（"主键"）——判分锚定术语黑话 | expected 双类要点强制（概念术语 + 题干实例词），校验源放宽到 content ∪ 题干；裁决权归 LLM 题意核对（同义表达判 correct） |
+| 学生答错后题目反而更难（死亡螺旋：错→重教加深→题更深→再错→regress） | 出题深度跟随"最新教学轮"而非"学生状态"——重教轮 extension 论断（深水区）进了出题上下文，且无已出题清单（换皮重考） | retry 信号（遗漏清单+连错次数）注入出题：只针对最重要遗漏要点降维出题；extension 失败后禁入题；previous_questions 防重考 |
+| 脚手架题干问"正确做法"但选项是关键词堆（语义崩坏） | 题干模板与选项格式独立拼接——LLM 干扰项生成时看不到最终题干 | LLM 一次生成完整三件套（题干+正确项+干扰项），服务端校验（词重叠+互异），失败回退时题干改为与关键词堆匹配的问法 |
 
 ## 7. 开发模式（AI 生成代码遵循以下流程）
 

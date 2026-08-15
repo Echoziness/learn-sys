@@ -124,8 +124,12 @@ def print_feedback(result: RoundResult) -> None:
         print(f"\n[决策] 本主题已达标，进入下一主题。{tag}")
     elif result.decision == "regress":
         print("\n[决策] 连续答错，判定地基未打牢——回前置主题重新教。")
+    elif result.is_scaffold and result.outcome.is_correct:
+        print("\n[决策] 关键点已确认，回到回答题检验。")
+    elif result.question.question_type == "choice" and result.outcome.is_correct:
+        print("\n[决策] 识别已通过——本轮教学将向应用深度推进。")
     else:
-        print("\n[决策] 继续本主题：针对你的作答重新讲一遍。")
+        print("\n[决策] 继续本主题：针对你的错因重新讲解。")
 
 
 def sim_answer(question: Question, entry: KnowledgeEntry, sim_rate: float) -> str:

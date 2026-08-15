@@ -23,7 +23,7 @@ from typing import Any
 import structlog
 
 from core.agents.diagnose import diagnose_node
-from core.agents.question import build_scaffold_distractors, question_node
+from core.agents.question import QuestionInput, build_choice_distractors, question_node, scaffold_node
 from core.answer_pipeline import AnswerOutcome, process_answer
 from core.assess import Question, build_question
 from core.config import Settings
@@ -133,6 +133,34 @@ class TopicProgress:
             f"评估：{grade.get('evaluation', '')}"
         ).strip("\n")
 
+    @property
+    def retry_signal(self) -> dict[str, Any] | None:
+        """失败降维信号：最近一轮答错时的遗漏清单 + 连续错次数。
+
+        出题降维契约的输入——学生刚失败时，下一题必须聚焦遗漏要点降维，
+        而非跟随最新教学轮的深度升维（死亡螺旋根因）。
+        """
+        last = self.last_round
+        if not last or not last.get("answer"):
+            return None
+        grade = last.get("grade") or {}
+        if grade.get("is_correct"):
+            return None
+        wrong = 0
+        for c in reversed(self.correctness):
+            if c:
+                break
+            wrong += 1
+        missed = [m for m in grade.get("missed_requirements") or [] if m]
+        if not missed:
+            return None
+        return {"missed_requirements": missed, "recent_wrong_count": wrong}
+
+    @property
+    def previous_questions(self) -> list[str]:
+        """已出过的题干（防换皮重考，最近 5 条）。"""
+        return [q["prompt"] for r in self.rounds[-5:] if (q := r.get("question"))]
+
 
 @dataclass
 class TeachResult:
@@ -174,6 +202,7 @@ class TeachLoop:
         self._store = store
         self._settings = settings
         self._entries = entries
+        self._choice_cache: dict[str, tuple[str, ...]] = {}  # choice 干扰项按 entry_id 缓存
 
     # ---------- 诊断与切片 ----------
 
@@ -272,6 +301,9 @@ class TeachLoop:
         }
         if progress.retry_context:
             state["retry_context"] = progress.retry_context
+        if is_retry:
+            # 重教去重：此前各轮已教论断注入——禁止复读，重教必须给增量
+            state["taught_previously"] = self._taught_previously(ctx.session_id, entry_id)
 
         final: dict[str, Any] = {}
         async for update in self._graph.astream(state, stream_mode="updates"):
@@ -389,7 +421,9 @@ class TeachLoop:
                 floor_type="answer" if progress.reached_answer else None,
             )
             if question.question_type == "answer":
-                question = await self._build_answer_question(ctx, entry, question, round_no)
+                question = await self._build_answer_question(ctx, entry, question, round_no, progress)
+            else:
+                question = await self._enhance_choice(ctx, entry, question)
 
         # question_id 编码轮次与题型：资源包按 id 去重时不同轮/题型不互相覆盖
         suffix = (
@@ -427,21 +461,36 @@ class TeachLoop:
         return question
 
     async def _build_answer_question(
-        self, ctx: SessionContext, entry: KnowledgeEntry, fallback: Question, round_no: int
+        self,
+        ctx: SessionContext,
+        entry: KnowledgeEntry,
+        fallback: Question,
+        round_no: int,
+        progress: TopicProgress,
     ) -> Question:
-        """回答题：LLM 生成场景化题干 + expected（深度契约：不超本轮教学内容）。"""
+        """回答题：LLM 生成场景化题干 + expected。
+
+        上下文契约：taught_claims（深度上限，带 claim_type 分层）、
+        retry 信号（失败降维）、difficulty_level、previous_questions（防重考）。
+        """
         taught = self._last_taught_claims(ctx.session_id, entry.id)
+        q_state: QuestionInput = {
+            "entry": {
+                "id": entry.id,
+                "title": entry.title,
+                "content": entry.content,
+                "keywords": entry.keywords,
+            },
+            "taught_claims": taught,
+            "difficulty_level": ctx.difficulty_level,
+            "previous_questions": progress.previous_questions,
+        }
+        retry = progress.retry_signal
+        if retry is not None:
+            q_state["retry"] = retry
         try:
             q = await question_node(
-                {
-                    "entry": {
-                        "id": entry.id,
-                        "title": entry.title,
-                        "content": entry.content,
-                        "keywords": entry.keywords,
-                    },
-                    "taught_claims": taught,
-                },
+                q_state,
                 provider=self._provider,
                 model=self._settings.question_model,
             )
@@ -459,47 +508,131 @@ class TeachLoop:
             expected_keywords=expected,
         )
 
-    async def _build_scaffold(
-        self, ctx: SessionContext, entry: KnowledgeEntry, failed: dict[str, str]
+    async def _enhance_choice(
+        self, ctx: SessionContext, entry: KnowledgeEntry, question: Question
     ) -> Question:
-        """脚手架选择题：正确项 = 条目 keywords；干扰项首项镜像学生错误理解。"""
-        correct_text = "、".join(entry.keywords[:6]) or entry.title
+        """choice 干扰项 LLM 化：同域混淆概念替换跨主题关键词堆（按 entry 缓存）。
+
+        判分只认选项标签——干扰项内容变化无判分影响，纯提升区分度。
+        失败/校验不过保持确定性干扰项（fail-closed）。
+        """
+        cached = self._choice_cache.get(entry.id)
+        if cached is not None:
+            if cached:
+                return self._apply_choice_distractors(question, list(cached))
+            return question
+        correct_text = question.options[0].split(". ", 1)[-1] if question.options else ""
         dists: list[str] = []
-        try:
-            dists = await build_scaffold_distractors(
+        if correct_text:
+            dists = await build_choice_distractors(
                 self._provider,
-                failed["prompt"],
-                failed["answer"],
+                {
+                    "id": entry.id,
+                    "title": entry.title,
+                    "content": entry.content,
+                    "keywords": entry.keywords,
+                },
                 correct_text,
                 model=self._settings.question_model,
             )
+        self._choice_cache[entry.id] = tuple(dists)
+        if len(dists) < 2:
+            return question
+        return self._apply_choice_distractors(question, dists)
+
+    @staticmethod
+    def _apply_choice_distractors(question: Question, dists: list[str] | tuple[str, ...]) -> Question:
+        if not question.options:
+            return question
+        correct_text = question.options[0].split(". ", 1)[-1]
+        texts = [correct_text, *dists][:4]
+        options = tuple(f"{label}. {t}" for label, t in zip("ABCD", texts, strict=False))
+        return dataclasses.replace(question, options=options, expected_label="A")
+
+    async def _build_scaffold(
+        self, ctx: SessionContext, entry: KnowledgeEntry, failed: dict[str, str]
+    ) -> Question:
+        """脚手架选择题：LLM 一次生成题干 + 正确项（教学论断提炼的陈述句）+ 干扰项。
+
+        正确项固定 A 位（教学对比工具，非测评，不需要位置随机化）。
+        LLM 失败/校验不过回退确定性构造（题干与关键词堆语义对齐）。
+        """
+        claims = self._last_taught_claims(ctx.session_id, entry.id)
+        entry_dict = {
+            "id": entry.id,
+            "title": entry.title,
+            "content": entry.content,
+            "keywords": entry.keywords,
+        }
+        try:
+            s = await scaffold_node(
+                {
+                    "entry": entry_dict,
+                    "taught_claims": claims,
+                    "failed_question": failed["prompt"],
+                    "student_answer": failed["answer"],
+                },
+                provider=self._provider,
+                model=self._settings.question_model,
+            )
         except Exception:
-            logger.warning("scaffold_llm_failed_fallback_distractors", entry_id=entry.id)
-        if not dists:
-            for other in self._entries:
-                text = "、".join(other.keywords[:6])
-                if text and text != correct_text and text not in dists:
-                    dists.append(text)
-                    if len(dists) >= 3:
-                        break
+            logger.warning("scaffold_llm_failed_fallback_deterministic", entry_id=entry.id)
+            s = None
+        if s is not None:
+            options = tuple(
+                f"{label}. {text}"
+                for label, text in zip("ABCD", [s.correct, *s.distractors], strict=False)
+            )
+            return Question(
+                question_id=f"q_{entry.id}_scaffold",
+                entry_id=entry.id,
+                prompt=s.question,
+                question_type="choice",
+                expected_keywords=(),
+                options=options,
+                expected_label="A",
+            )
+        # 确定性回退：题干与关键词堆选项语义对齐（不再错位问"正确的做法"）
+        correct_text = "、".join(entry.keywords[:6]) or entry.title
+        dists: list[str] = []
+        for other in self._entries:
+            text = "、".join(other.keywords[:6])
+            if text and text != correct_text and text not in dists:
+                dists.append(text)
+                if len(dists) >= 3:
+                    break
         labels = "ABCD"
-        options = [f"A. {correct_text}", *[f"{labels[i]}. {t}" for i, t in enumerate(dists, 1)]]
+        options = (f"A. {correct_text}", *[f"{labels[i]}. {t}" for i, t in enumerate(dists, 1)])
         return Question(
             question_id=f"q_{entry.id}_scaffold",
             entry_id=entry.id,
-            prompt=f"关于上一题（{failed['prompt']}），以下哪个选项是正确的做法？",
+            prompt=f"以下哪组概念属于「{entry.title}」的核心内容？",
             question_type="choice",
             expected_keywords=(),
-            options=tuple(options),
+            options=options,
             expected_label="A",
         )
 
-    def _last_taught_claims(self, session_id: str, entry_id: str) -> list[str]:
-        """深度契约输入：该条目最近一次教学的论断全文（来自事件流，D2 可重建）。"""
+    def _last_taught_claims(self, session_id: str, entry_id: str) -> list[dict[str, Any]]:
+        """深度契约输入：该条目最近一次教学的论断（带 claim_type，D2 可重建）。
+
+        claim_type 进上下文供出题分层：失败后 extension 论断禁止入题。
+        """
         for event in reversed(self._store.load_events(session_id, limit=500)):
             if event.event_type == "teach_delivered" and event.payload.get("entry_id") == entry_id:
-                return [c["text"] for c in event.payload.get("claims", [])]
+                return [
+                    {"text": c["text"], "claim_type": c.get("claim_type", "core")}
+                    for c in event.payload.get("claims", [])
+                ]
         return []
+
+    def _taught_previously(self, session_id: str, entry_id: str) -> list[str]:
+        """重教去重输入：该条目此前**所有**轮次的已教论断文本（时间正序）。"""
+        texts: list[str] = []
+        for event in self._store.load_events(session_id, limit=500):
+            if event.event_type == "teach_delivered" and event.payload.get("entry_id") == entry_id:
+                texts.extend(c["text"] for c in event.payload.get("claims", []))
+        return texts
 
     # ---------- 作答与决策 ----------
 

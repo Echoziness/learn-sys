@@ -38,6 +38,7 @@ GENERATE_PROMPT = """你是大数据分析领域的培训讲师。根据以下�
 上轮审核反馈（如有，请逐条回应：采纳并修正，或说明反驳理由）：{feedback}
 {uncovered_section}
 {retry_section}
+{dedup_section}
 【本次教学主题条目】（必须围绕它讲，这是本轮唯一要教透的内容）：
 {anchor_entry}
 
@@ -108,6 +109,15 @@ async def generate_node(
         else ""
     )
 
+    taught_previously = state.get("taught_previously", [])
+    dedup_section = (
+        "【已教内容】（此前各轮已讲过——本轮禁止复读这些论断的信息点，"
+        "重教必须提供增量：针对错因的应用、换角度的深化、或补充未覆盖细节）：\n"
+        + "\n".join(f"- {t}" for t in taught_previously)
+        if taught_previously
+        else ""
+    )
+
     output = await provider.chat_validated(
         [
             {
@@ -121,6 +131,7 @@ async def generate_node(
                     feedback=state.get("last_review_feedback", ""),
                     uncovered_section=uncovered_section,
                     retry_section=retry_section,
+                    dedup_section=dedup_section,
                     anchor_entry=anchor_entry_text,
                     aux_entries=aux_text,
                 ),

@@ -61,6 +61,7 @@ async def diagnose_node(
         ],
         schema=DiagnoseOutput,
         model=model,
+        temperature=0.0,  # 诊断必须可复现：同一画像两次诊断应产出一致 gap_ids
     )
     logger.info(
         "diagnose_done",

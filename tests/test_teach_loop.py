@@ -14,7 +14,7 @@ from scripts.init_db import SCHEMA
 
 from core.agents.diagnose import DiagnoseOutput
 from core.agents.feedback import FeedbackOutput
-from core.agents.question import QuestionOutput, ScaffoldOutput
+from core.agents.question import DistractorOutput, QuestionOutput, ScaffoldOutput
 from core.config import Settings
 from core.plan import KnowledgeEntry
 from core.session import SessionStore
@@ -30,10 +30,12 @@ class FakeProvider:
     def __init__(self, feedbacks: list[FeedbackOutput] | None = None):
         self._feedbacks = feedbacks or []
         self.calls: list[str] = []
+        self.prompts: list[str] = []  # 记录 prompt 文本（上下文契约断言用）
 
     async def chat_validated(self, messages, schema, model=None, **kwargs):
         name = schema.__name__
         self.calls.append(name)
+        self.prompts.append(str(messages[0].get("content", "")))
         if name == "DiagnoseOutput":
             return DiagnoseOutput(
                 gaps=["E1"], gap_ids=["E1"], profile_summary="测试摘要", difficulty_level="beginner"
@@ -43,7 +45,13 @@ class FakeProvider:
                 question="结合场景说明 E1 的要点？", expected_keywords=["甲", "乙"]
             )
         if name == "ScaffoldOutput":
-            return ScaffoldOutput(distractors=["镜像错误理解", "无关项"])
+            return ScaffoldOutput(
+                question="关于 E1，下面哪个理解是正确的？",
+                correct="甲是 E1 的核心概念，乙是配套",
+                distractors=["镜像错误理解", "无关干扰项"],
+            )
+        if name == "DistractorOutput":
+            return DistractorOutput(distractors=["混淆一、混淆二", "混淆三、混淆四", "混淆五、混淆六"])
         if name == "FeedbackOutput":
             assert self._feedbacks, "feedback 响应队列耗尽"
             return self._feedbacks.pop(0)
@@ -198,9 +206,11 @@ def test_full_session_flow(tmp_path):
 
 
 def test_scaffold_state_machine(tmp_path):
-    """回答题失败 → 脚手架（镜像干扰项）→ 答对回回答题，且不洗白降维计数。"""
+    """回答题失败 → 脚手架（镜像干扰项）→ 答对回回答题，且不洗白降维计数。
+
+    注：choice 答对不调 LLM——feedbacks 队列从 R2 回答题开始消费。
+    """
     feedbacks = [
-        FeedbackOutput(verdict="correct", evaluation="选择题对", missed_requirements=[]),
         FeedbackOutput(verdict="incorrect", evaluation="回答题错", missed_requirements=[]),
         FeedbackOutput(verdict="correct", evaluation="脚手架对", missed_requirements=[]),
     ]
@@ -237,9 +247,11 @@ def test_scaffold_state_machine(tmp_path):
 
 
 def test_scaffold_wrong_keeps_scaffold(tmp_path):
-    """脚手架答错：计一次错且保持脚手架状态（识别都没过）。"""
+    """脚手架答错：计一次错且保持脚手架状态（识别都没过）。
+
+    注：choice 答对不调 LLM——feedbacks 队列从 R2 回答题开始消费。
+    """
     feedbacks = [
-        FeedbackOutput(verdict="correct", evaluation="选择题对", missed_requirements=[]),
         FeedbackOutput(verdict="incorrect", evaluation="回答题错", missed_requirements=[]),
         FeedbackOutput(verdict="incorrect", evaluation="脚手架错", missed_requirements=[]),
     ]
@@ -277,3 +289,97 @@ def test_regress_emits_event(tmp_path):
     assert r2.decision == "regress"
     events = _events(store, ctx.session_id)
     assert "topic_regress" in events
+
+
+# ── 上下文工程修复（2026-08-15）：进度推导信号 + 缓存 + 注入 ────────────
+
+
+def test_progress_retry_signal(tmp_path):
+    """答错 + LLM 给出遗漏清单 → 降维信号（遗漏 + 连错计数）；答对 → 无信号。"""
+    loop, store = _setup(tmp_path)
+    ctx = asyncio.run(loop.start_session("u1", _profile()))
+    sid = ctx.session_id
+    q = {"question_id": "q_E1_r1_answer", "entry_id": "E1", "question_type": "answer",
+         "prompt": "第一题", "options": [], "expected_label": ""}
+    store.save_round(sid, entry_id="E1", round_no=1, question=q, expected=["甲"],
+                     answer="某作答",
+                     grade={"is_correct": False, "missed_requirements": ["未提及甲"]},
+                     decision="retry", mastery_after=0.3)
+    store.save_mastery(sid, "u1", "E1", round_no=1, correctness=False, mastery_after=0.3)
+    sig = loop.progress(sid, "E1").retry_signal
+    assert sig == {"missed_requirements": ["未提及甲"], "recent_wrong_count": 1}
+
+    # 答对轮：无信号
+    q2 = {**q, "question_id": "q_E1_r2_answer", "prompt": "第二题"}
+    store.save_round(sid, entry_id="E1", round_no=2, question=q2, expected=["甲"],
+                     answer="甲", grade={"is_correct": True, "missed_requirements": []},
+                     decision="retry", mastery_after=0.6)
+    assert loop.progress(sid, "E1").retry_signal is None
+
+
+def test_progress_retry_signal_counts_consecutive_wrong(tmp_path):
+    loop, store = _setup(tmp_path)
+    ctx = asyncio.run(loop.start_session("u1", _profile()))
+    sid = ctx.session_id
+    for i, correct in enumerate([True, False, False], start=1):
+        store.save_round(sid, entry_id="E1", round_no=i,
+                         question={"question_id": f"q{i}", "entry_id": "E1",
+                                   "question_type": "answer", "prompt": f"题{i}",
+                                   "options": [], "expected_label": ""},
+                         expected=["甲"], answer="作答",
+                         grade={"is_correct": correct, "missed_requirements": ["遗漏"]},
+                         decision="retry", mastery_after=0.3)
+        store.save_mastery(sid, "u1", "E1", round_no=i, correctness=correct, mastery_after=0.3)
+    sig = loop.progress(sid, "E1").retry_signal
+    assert sig is not None
+    assert sig["recent_wrong_count"] == 2
+
+
+def test_previous_questions_collected(tmp_path):
+    loop, store = _setup(tmp_path)
+    ctx = asyncio.run(loop.start_session("u1", _profile()))
+    sid = ctx.session_id
+    for i, prompt in enumerate(["第一题", "第二题", "第三题"], start=1):
+        store.save_round(sid, entry_id="E1", round_no=i,
+                         question={"question_id": f"q{i}", "entry_id": "E1",
+                                   "question_type": "answer", "prompt": prompt,
+                                   "options": [], "expected_label": ""},
+                         expected=[], answer=None, grade=None,
+                         decision="pending", mastery_after=None)
+    assert loop.progress(sid, "E1").previous_questions == ["第一题", "第二题", "第三题"]
+
+
+def test_choice_distractors_cached_per_entry(tmp_path):
+    """choice 干扰项按 entry 缓存：同条目第二次出 choice 不再调 LLM。"""
+    feedbacks = [FeedbackOutput(verdict="incorrect", evaluation="choice 错", missed_requirements=[])]
+    loop, store = _setup(tmp_path, feedbacks=feedbacks)
+    provider = loop._provider
+    assert isinstance(provider, FakeProvider)
+    ctx = asyncio.run(loop.start_session("u1", _profile()))
+    asyncio.run(loop.teach_round(ctx, "E1"))
+    q1 = asyncio.run(loop.next_question(ctx, "E1"))
+    assert q1.question_type == "choice"
+    assert q1.options[0].startswith("A. ")  # 正确项仍 A 位
+    asyncio.run(loop.handle_answer(ctx, "E1", q1, "Z"))  # 错 → mastery 0
+    assert provider.calls.count("DistractorOutput") == 1
+
+    asyncio.run(loop.teach_round(ctx, "E1"))
+    q2 = asyncio.run(loop.next_question(ctx, "E1"))
+    assert q2.question_type == "choice"
+    assert provider.calls.count("DistractorOutput") == 1  # 缓存命中
+
+
+def test_retry_round_injects_taught_previously(tmp_path):
+    """重教轮：此前已教论断注入教学子图 state（去重输入）。"""
+    feedbacks = [FeedbackOutput(verdict="correct", evaluation="choice 对", missed_requirements=[])]
+    graph = FakeGraph()
+    loop, store = _setup(tmp_path, feedbacks=feedbacks)
+    loop._graph = graph  # type: ignore[assignment]
+    ctx = asyncio.run(loop.start_session("u1", _profile()))
+    asyncio.run(loop.teach_round(ctx, "E1"))
+    q1 = asyncio.run(loop.next_question(ctx, "E1"))
+    asyncio.run(loop.handle_answer(ctx, "E1", q1, q1.expected_label))  # retry
+
+    asyncio.run(loop.teach_round(ctx, "E1"))  # 重教轮
+    state = graph.states[-1]
+    assert state.get("taught_previously") == ["论断一", "论断二"]

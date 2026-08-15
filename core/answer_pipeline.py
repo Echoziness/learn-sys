@@ -45,11 +45,15 @@ async def process_answer(
     correctness_history 为调用方持有的该主题历史（本函数只读，
     返回的 decision 依赖追加本回合结果后的完整历史）。
 
-    评估与裁决分离（2026-08-12）：
+    评估与裁决分离（2026-08-12；2026-08-15 收口修订）：
     - answer 题总是送 LLM 评估——覆盖率不足的学生作答往往最需要
       教学点评（概念错误比"答非所问"更有教学价值），规则预筛只降级裁决；
-    - fail-closed 收口：LLM 判 correct 但规则覆盖率不足（< min_coverage）时
-      维持判错——关键词覆盖是放行的底线，LLM 无权绕过（防 LLM 放水）。
+    - 裁决权归属（同义表达判定的结构基础）：关键词覆盖是字符级代理指标，
+      测不了"用实例表达同义"——LLM 判 correct 且题意核对无遗漏时采纳判定。
+      防放水不靠规则否决，靠三层：矛盾检测（feedback_node 内 correct+missed
+      → 硬降 partial）、题意核对清单（missed_requirements 必须逐项真实）、
+      后续轮兜底（题型单向推进 + advance 需多轮 mastery 门槛 + regress）。
+      规则覆盖率继续落 grade 作审计信号。
     """
     grade = grade_answer(question, answer, min_coverage=min_coverage)
 
@@ -86,14 +90,9 @@ async def process_answer(
         )
         llm_reviewed = True
         verdict_correct = fb["verdict"] == "correct"
-        if question.question_type == "answer" and verdict_correct and grade.keyword_coverage < min_coverage:
-            # fail-closed：覆盖不足时 LLM 无权放行，维持规则判错；
-            # 评估也不采用 LLM 的（避免"答对了"的误导性反馈）。
-            is_correct = False
-        else:
-            is_correct = verdict_correct
-            if fb["evaluation"]:
-                evaluation = fb["evaluation"]
+        is_correct = verdict_correct
+        if fb["evaluation"]:
+            evaluation = fb["evaluation"]
 
     history = [*correctness_history, is_correct]
     decision, mastery = decide_next_step(history)

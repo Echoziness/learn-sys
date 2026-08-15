@@ -1,8 +1,10 @@
-"""作答管线（process_answer）：评估与裁决分离 + fail-closed 收口。
+"""作答管线（process_answer）：评估与裁决分离 + 裁决权归属。
 
 - answer 题总是送 LLM 评估（覆盖率不足的作答最有教学价值）；
-- LLM 判 correct 但规则覆盖率不足 → 维持判错（LLM 无权绕过关键词底线）；
-- 裁决被否决时评估也不采用 LLM 的（避免"答对了"误导）。
+- 裁决权归属 LLM 题意核对（2026-08-15 收口修订）：同义表达（用实例/
+  通俗说法）判 correct 采纳——关键词覆盖是字符级代理指标，测不了同义；
+- 防放水三层：矛盾检测（correct+missed→partial，feedback_node 内）、
+  题意核对清单、后续轮兜底；规则覆盖率落 grade 作审计信号。
 """
 
 from core.answer_pipeline import process_answer
@@ -13,14 +15,16 @@ from core.plan import KnowledgeEntry
 class FakeFeedback:
     """FeedbackLLM 最小实现：返回预设裁决，记录调用次数。"""
 
-    def __init__(self, verdict: str, evaluation: str = "LLM评估"):
+    def __init__(self, verdict: str, evaluation: str = "LLM评估", missed: list | None = None):
         self._verdict = verdict
         self._evaluation = evaluation
+        self._missed = missed or []
         self.calls = 0
 
     async def chat_validated(self, messages, schema, model=None, **kwargs):  # noqa: ANN001
         self.calls += 1
-        return schema(verdict=self._verdict, evaluation=self._evaluation)
+        return schema(verdict=self._verdict, evaluation=self._evaluation,
+                      missed_requirements=self._missed)
 
 
 def _answer_question():
@@ -30,15 +34,16 @@ def _answer_question():
     return build_question(entry, mastery=0.8)  # answer 题
 
 
-async def test_answer_low_coverage_llm_verdict_correct_denied():
-    """覆盖率不足时 LLM 判 correct 被否决：维持判错，评估不用 LLM 的。"""
-    fb = FakeFeedback(verdict="correct", evaluation="你答得很好！")
+async def test_answer_low_coverage_llm_verdict_correct_accepted():
+    """同义表达：覆盖率不足但 LLM 题意核对判 correct → 采纳（判定看理解）。"""
+    fb = FakeFeedback(verdict="correct", evaluation="你说的'学号唯一'正是在说主键的作用")
     out = await process_answer(
-        fb, _answer_question(), "数据库", [], min_coverage=0.6
+        fb, _answer_question(), "用学号每个学生一个不重复", [], min_coverage=0.6
     )
     assert fb.calls == 1  # 评估总是做
-    assert out.is_correct is False  # fail-closed：LLM 无权绕过覆盖底线
-    assert "你答得很好" not in out.evaluation  # 避免"答对了"的误导
+    assert out.is_correct is True  # 裁决权在 LLM 题意核对
+    assert "学号" in out.evaluation  # 评估采用 LLM 的（教行话）
+    assert out.grade.keyword_coverage < 0.6  # 规则覆盖率仍落 grade 作审计
 
 
 async def test_answer_low_coverage_llm_verdict_incorrect_kept():
