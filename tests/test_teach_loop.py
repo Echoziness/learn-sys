@@ -175,10 +175,15 @@ def test_full_session_flow(tmp_path):
     assert r1.decision == "retry"  # mastery 0.5（单次封顶）< 0.7
     assert store.load_mastery_history(ctx.session_id, "E1") == [True]
 
-    # R2：重教（错因回流注入）→ 回答题（mastery 0.5 ≥ 0.5）
+    # R2：识别通过推进教学（advance_hint 通道，不再伪装成错因）→ 回答题（mastery 0.5 ≥ 0.5）
     teach2 = asyncio.run(loop.teach_round(ctx, "E1"))
     assert teach2.round_no == 2 and teach2.is_retry
-    assert "题目" in loop.progress(ctx.session_id, "E1").retry_context
+    graph = loop._graph
+    assert isinstance(graph, FakeGraph)
+    r2_state = graph.states[-1]
+    assert "题目" not in (r2_state.get("retry_context") or "")  # 答对无错因回流
+    assert "识别已通过" in r2_state.get("advance_hint", "")  # 推进提示注入
+    assert r2_state.get("taught_previously") == ["论断一", "论断二"]  # 去重输入
     q2 = asyncio.run(loop.next_question(ctx, "E1"))
     assert q2.question_type == "answer" and q2.expected_keywords == ("甲", "乙")
 
@@ -383,3 +388,53 @@ def test_retry_round_injects_taught_previously(tmp_path):
     asyncio.run(loop.teach_round(ctx, "E1"))  # 重教轮
     state = graph.states[-1]
     assert state.get("taught_previously") == ["论断一", "论断二"]
+
+
+# ── 巩固模式（2026-08-15）：answer 答对未达门槛 → 跳过教学直接确认 ──────
+
+
+def test_needs_teaching_consolidation_mode(tmp_path):
+    """answer 答对 → needs_teaching=False（直接出题）；choice 答对/答错 → True。"""
+    loop, store = _setup(tmp_path)
+    ctx = asyncio.run(loop.start_session("u1", _profile()))
+    sid = ctx.session_id
+
+    def _save(i: int, qtype: str, correct: bool, scaffold: bool = False) -> None:
+        qid = f"q_E1_r{i}_{'choice_scaffold' if scaffold else qtype}"
+        store.save_round(
+            sid, entry_id="E1", round_no=i,
+            question={"question_id": qid, "entry_id": "E1", "question_type": qtype,
+                      "prompt": f"题{i}", "options": [], "expected_label": "A"},
+            expected=["甲"], answer="作答",
+            grade={"is_correct": correct, "missed_requirements": []},
+            decision="retry", mastery_after=0.5,
+        )
+        store.save_mastery(sid, "u1", "E1", round_no=i, correctness=correct, mastery_after=0.5)
+
+    assert loop.progress(sid, "E1").needs_teaching is True  # 首轮
+    _save(1, "choice", True)
+    assert loop.progress(sid, "E1").needs_teaching is True  # choice 答对：应用推进教学
+    _save(2, "answer", True)
+    assert loop.progress(sid, "E1").needs_teaching is False  # answer 答对：巩固确认
+    _save(3, "answer", False)
+    assert loop.progress(sid, "E1").needs_teaching is True  # answer 答错：错因重教
+    _save(4, "choice", True, scaffold=True)
+    assert loop.progress(sid, "E1").needs_teaching is True  # 脚手架答对：仍教学巩固
+
+
+def test_retry_context_only_when_wrong(tmp_path):
+    """choice 答对不再触发错因回流（extension 语义污染修复）。"""
+    loop, store = _setup(tmp_path)
+    ctx = asyncio.run(loop.start_session("u1", _profile()))
+    sid = ctx.session_id
+    store.save_round(
+        sid, entry_id="E1", round_no=1,
+        question={"question_id": "q_E1_r1_choice", "entry_id": "E1",
+                  "question_type": "choice", "prompt": "题1", "options": [], "expected_label": "A"},
+        expected=[], answer="A",
+        grade={"is_correct": True, "evaluation": "对"},
+        decision="retry", mastery_after=0.5,
+    )
+    progress = loop.progress(sid, "E1")
+    assert progress.retry_context == ""  # 答对无错因回流
+    assert progress.choice_passed is True  # 走推进提示通道

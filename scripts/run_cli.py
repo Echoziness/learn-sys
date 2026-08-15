@@ -126,21 +126,56 @@ def print_feedback(result: RoundResult) -> None:
         print("\n[决策] 连续答错，判定地基未打牢——回前置主题重新教。")
     elif result.is_scaffold and result.outcome.is_correct:
         print("\n[决策] 关键点已确认，回到回答题检验。")
+    elif result.question.question_type == "answer" and result.outcome.is_correct:
+        print(f"\n[决策] 已答对，掌握度 {result.mastery:.3f}（门槛 0.700）——下一题直接确认巩固。")
     elif result.question.question_type == "choice" and result.outcome.is_correct:
         print("\n[决策] 识别已通过——本轮教学将向应用深度推进。")
     else:
         print("\n[决策] 继续本主题：针对你的错因重新讲解。")
 
 
-def sim_answer(question: Question, entry: KnowledgeEntry, sim_rate: float) -> str:
-    """模拟学生：按概率答对（对 = 正确标签 / 覆盖全部要点的作答）。"""
+SIM_STUDENT_PROMPT = """你是一个刚学完下面内容的学生，正在回答老师的检验题。
+用自然、口语化的中文作答（50 字内），像真实学生一样具体回应题目的场景。
+
+【刚学的内容】
+{content}
+
+【检验题】
+{prompt}
+
+要求：作答正确（基于刚学的内容）、直接回应题目问什么、用自己的话。
+只输出作答文本。"""
+
+
+async def sim_answer(
+    question: Question, entry: KnowledgeEntry, sim_rate: float, provider
+) -> str:
+    """模拟学生：按概率答对。
+
+    choice 答对 = 正确标签；answer 答对 = LLM 生成自然学生作答
+    （关键词堆/空洞串句会被复核判"只列概念无理解"——那不是理解，
+    生成真实作答才能让 sim 通过率反映判分真实性）。
+    """
     if question.question_type == "choice":
         if random.random() < sim_rate:
             return question.expected_label
         wrong = [o[0] for o in question.options if not o.startswith(question.expected_label)]
         return random.choice(wrong) if wrong else "Z"
     if random.random() < sim_rate:
-        return "、".join(question.expected_keywords) or entry.content
+        try:
+            return await provider.chat(
+                [
+                    {
+                        "role": "user",
+                        "content": SIM_STUDENT_PROMPT.format(
+                            content=entry.content, prompt=question.prompt
+                        ),
+                    }
+                ],
+                temperature=0.2,
+            )
+        except Exception:
+            return entry.content  # LLM 失败回退：复述条目原文（要点齐全）
     return "我还没完全学会，说不清楚。"
 
 
@@ -192,8 +227,13 @@ async def run(args) -> None:
             continue
 
         print_section(f"教学单元（第 {progress.next_round_no} 轮）：{entry.title}")
-        teach = await with_llm_progress("教学", loop.teach_round(ctx, entry.id))
-        print_teach(teach)
+        if progress.needs_teaching:
+            teach = await with_llm_progress("教学", loop.teach_round(ctx, entry.id))
+            print_teach(teach)
+        else:
+            # 巩固模式：answer 已答对（未达门槛只是证据不足）——直接出题确认，
+            # 不再讲课（教学无锚点时 LLM 只能复读；mastery 证据由作答累积）
+            print("[巩固] 上一题已答对——跳过教学，直接出题确认掌握。")
 
         question = await with_llm_progress("出题", loop.next_question(ctx, entry.id))
         if question.question_id.endswith("_scaffold"):
@@ -201,7 +241,7 @@ async def run(args) -> None:
         print_question(question)
 
         if args.sim is not None:
-            answer = sim_answer(question, entry, args.sim)
+            answer = await sim_answer(question, entry, args.sim, provider)
         else:
             if question.question_type == "choice":
                 choices = [Choice(label=opt, value=opt[0]) for opt in question.options]

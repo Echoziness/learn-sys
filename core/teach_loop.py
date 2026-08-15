@@ -42,10 +42,12 @@ from core.state import AgentState, DraftClaim, LearnerProfile, ReviewNote
 
 logger = structlog.get_logger()
 
-# 重教轮的选择题答对提示：识别已通过，重教必须向应用深度推进
-_CHOICE_PASS_HINT = (
-    "上一轮为选择题且回答正确（识别已通过）——本次重教不得复读基础定义，"
+# 识别通过后的教学推进提示：choice 答对 = 识别层通过，教学向应用深度推进。
+# 与错因回流（retry_context）分通道——识别通过不是错因，不得触发 extension 论断。
+_ADVANCE_HINT = (
+    "上一轮为选择题且回答正确（识别已通过）——本次教学不得复读基础定义，"
     "请向应用深度推进：讲概念的实际应用场景、常见误解与易错点。"
+    "本轮论断仍为 core 类型（这是新课推进，不是错因纠正）。"
 )
 
 
@@ -83,6 +85,24 @@ class TopicProgress:
         return answered[-1] if answered else None
 
     @property
+    def needs_teaching(self) -> bool:
+        """巩固模式（2026-08-15）：answer 答对但未达门槛 → 跳过教学直接出确认题。
+
+        确定性规则，读历史不猜心：answer 答对 = 无明确教学锚点（矛盾检测
+        保证 correct 蕴含无遗漏），唯一缺口是证据数量——再测一个侧面即可。
+        mastery 数学不动：证据照常由作答累积，题型阶梯照常推进。
+        choice 答对仍需教学（识别→回忆之间有真实教学空间：应用推进）。
+        """
+        last = self.last_round
+        if not last:
+            return True  # 首轮
+        q = last.get("question") or {}
+        grade = last.get("grade") or {}
+        if q.get("question_type") != "answer":
+            return True  # choice/脚手架：识别层，答对答错都有教学空间
+        return not grade.get("is_correct", False)
+
+    @property
     def next_round_no(self) -> int:
         return max((r["round_no"] for r in self.rounds), default=0) + 1
 
@@ -116,22 +136,33 @@ class TopicProgress:
 
     @property
     def retry_context(self) -> str:
-        """错因回流：上一轮题目 + 作答 + 评估（choice 答对时附加深度推进提示）。"""
+        """错因回流：上一轮**答错**时的题目 + 作答 + 评估（extension 论断的触发源）。
+
+        choice 答对不再走此通道（会污染 extension 语义——识别通过不是错因），
+        推进提示见 choice_passed。
+        """
         last = self.last_round
         if not last or not last.get("answer"):
             return ""
-        q = last.get("question") or {}
         grade = last.get("grade") or {}
-        hint = (
-            _CHOICE_PASS_HINT
-            if q.get("question_type") == "choice" and grade.get("is_correct")
-            else ""
-        )
+        if grade.get("is_correct"):
+            return ""
+        q = last.get("question") or {}
         return (
-            f"{hint}\n题目：{q.get('prompt', '')}\n"
+            f"题目：{q.get('prompt', '')}\n"
             f"学生作答：{last['answer']}\n"
             f"评估：{grade.get('evaluation', '')}"
         ).strip("\n")
+
+    @property
+    def choice_passed(self) -> bool:
+        """识别通过信号：上一轮 choice（含脚手架）答对 → 教学向应用深度推进。"""
+        last = self.last_round
+        if not last:
+            return False
+        q = last.get("question") or {}
+        grade = last.get("grade") or {}
+        return q.get("question_type") == "choice" and bool(grade.get("is_correct"))
 
     @property
     def retry_signal(self) -> dict[str, Any] | None:
@@ -301,6 +332,8 @@ class TeachLoop:
         }
         if progress.retry_context:
             state["retry_context"] = progress.retry_context
+        if progress.choice_passed:
+            state["advance_hint"] = _ADVANCE_HINT
         if is_retry:
             # 重教去重：此前各轮已教论断注入——禁止复读，重教必须给增量
             state["taught_previously"] = self._taught_previously(ctx.session_id, entry_id)
@@ -314,7 +347,10 @@ class TeachLoop:
                 await self._emit_node_event(ctx.session_id, entry_id, round_no, node, out)
 
         claims: list[DraftClaim] = final.get("draft", [])
-        reviews: list[ReviewNote] = final.get("review_history", [])
+        # 审核回流后 review_history 是多轮累积——只取最新一轮裁决
+        # （旧轮已被打回重写，其 unsupported 不再计入展示与事件）
+        all_reviews: list[ReviewNote] = final.get("review_history", [])
+        reviews = all_reviews[-len(claims):] if claims else []
         verdicts = {
             str(n.claim_index): n.verdict
             for n in reviews

@@ -74,10 +74,16 @@ async def retrieve_node(
 
 
 def build_teach_graph(settings: Settings, provider: LLMProvider, retriever: Retriever):
-    """主题教学子图：检索 → 生成 → 审核 → END。
+    """主题教学子图：检索 → 生成 → 审核 →（条件回流）→ END。
 
     输入 state 须含 gaps（当前主题标题）、difficulty_level；输出 draft /
     review_history / retrieved_entries。调用方可反复 invoke 以重教（retry）。
+
+    审核回流（2026-08-15）：unsupported ≥ REVIEW_RETRY_THRESHOLD 且
+    review_round < MAX_REVIEW_RETRIES → 回 generate 重写（带
+    last_review_feedback 打回意见）。上限防无限辩论（对齐"辩论轮次
+    硬上限"约定）；超限放行——裁决已落 review_history，幻觉率指标
+    照常可复算，下游（CLI/出题）知晓"教学质量存疑"。
     """
     g = StateGraph(AgentState)
     g.add_node("retrieve", partial(retrieve_node, retriever=retriever, top_k=settings.retrieval_top_k))
@@ -87,8 +93,29 @@ def build_teach_graph(settings: Settings, provider: LLMProvider, retriever: Retr
     g.add_edge(START, "retrieve")
     g.add_edge("retrieve", "generate")
     g.add_edge("generate", "review")
-    g.add_edge("review", END)
+    g.add_conditional_edges(
+        "review",
+        _review_gate,
+        {"regenerate": "generate", "done": END},
+    )
 
     compiled = g.compile()
     logger.info("teach_graph_compiled", nodes=["retrieve", "generate", "review"])
     return compiled
+
+
+# 审核打回阈值：unsupported 论断数达到此值即打回重写（R2 日志：3/4 未支持仍放行）
+REVIEW_RETRY_THRESHOLD = 2
+# 审核打回轮次上限：防 generate↔review 无限辩论
+MAX_REVIEW_RETRIES = 2
+
+
+def _review_gate(state: AgentState) -> str:
+    """审核回流闸门：纯函数读 state，无 LLM。"""
+    if state.get("review_round", 0) >= MAX_REVIEW_RETRIES:
+        return "done"
+    history = state.get("review_history", [])
+    # 只看最近一轮裁决（review_history 是 append 累积的，旧轮已打回重写过）
+    latest = history[-len(state.get("draft", [])):] if state.get("draft") else []
+    unsupported = sum(1 for n in latest if n.verdict == "unsupported")
+    return "regenerate" if unsupported >= REVIEW_RETRY_THRESHOLD else "done"

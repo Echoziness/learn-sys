@@ -86,11 +86,12 @@ web/ ──(SSE)──→ api/ ──→ core/ ──→ data/
 
 ```text
 diagnose（LLM 一次，输出 gap_ids）→ plan（确定性切片：ID 投影 + 前置链闭包 + 拓扑排序）
-  → 逐主题教学子图（retrieve[anchor 锚定] → generate → review；retry 轮错因回流进 generate）
+  → 逐主题教学子图（retrieve[anchor 锚定] → generate → review；unsupported ≥2 时 review→generate 回流重写，上限 2 轮；retry 轮错因回流进 generate）
   → question/assess（出题：题型单向推进，answer 题干由 LLM 生成，深度以本轮教学内容为上限）
   → 学生作答 → answer_pipeline（规则判分 → LLM 复核/评估 → 掌握度更新）
   → 决策：advance（下一主题）/ retry（重教：错因回流 + 题目重生成）/ regress（回前置主题降维）
   → answer 失败后下轮先出脚手架选择题（镜像学生错误理解，答对回 answer，不计入掌握度历史）
+  → answer 答对但未达门槛 → 巩固模式：跳过教学直接出确认题（确定性规则，mastery 证据只由作答累积）
 ```
 
 - 交流结果只约束教学执行层，永不反向修改课程本体与切片；
@@ -134,6 +135,9 @@ diagnose（LLM 一次，输出 gap_ids）→ plan（确定性切片：ID 投影 
 - **出题降维契约**：学生刚答错时 `retry` 信号（遗漏清单 + 连错次数）注入出题上下文——下一题只针对最重要的一个遗漏要点出识别/理解级题，**深度不得升维**（题目深度跟随学生状态而非最新教学轮——重教轮 extension 论断是深水区内容，失败后禁止入题，防"失败后题反而更难"的死亡螺旋）；`previous_questions` 注入防换皮重考；
 - **裁决权归属**（2026-08-15 修订）：answer 题判分 = 规则预筛（审计信号）→ LLM 复核裁决（唯一能判"同义表达"的层）——LLM 判 correct 且题意核对无遗漏即采纳（学生用实例/通俗说法表达同义判对）；防放水三层：矛盾检测（feedback_node 内 correct+missed 非空 → 硬降 partial）、题意核对清单、后续轮兜底（题型单向推进 + advance 需多轮 mastery 门槛 + regress）；feedback LLM 失败回退规则时仍要求覆盖率 1.0 才判对（无语义证据时从严格则）；
 - **出题深度契约**：回答题必须注入本轮教学论断（`taught_claims`，取自最近一次 teach_delivered 事件，带 claim_type 分层）作为出题上限——学生只需运用已教概念即可作答，禁止问教学内容未覆盖的深度（防"教得浅、考得深"）；retry 重教后 delete_pending_rounds 作废旧题重生成；
+- **巩固模式**（2026-08-15 拍板）：answer 答对但未达门槛（唯一缺口是证据数量，矛盾检测保证 correct 蕴含无遗漏）→ `TopicProgress.needs_teaching=False`，驱动方跳过教学直接出确认题——确定性规则读历史，不改变 mastery 数学（证据照常由作答累积）；choice 答对仍教学（识别→回忆之间有真实教学空间，走 `advance_hint` 通道）；
+- **教学信号双通道**：`retry_context`（上一轮**答错**：题目+作答+评估，extension 论断的唯一触发源）与 `advance_hint`（上一轮 choice 答对：core 论断向应用推进）分通道注入——识别通过不是错因，混通道会污染 extension 语义（choice 答对轮教学被标成错因扩展）；
+- **审核回流**（graph 条件边）：unsupported ≥2 且 review_round<2 → review→generate 回流重写（带 last_review_feedback 打回意见）；超限放行——裁决已落 review_history，幻觉率指标照常可复算。teach_round 取 review_history **最新一轮切片**（append 累积，旧轮已打回重写不再计入展示与事件）；
 - **重教去重**：重教轮 `taught_previously`（此前各轮已教论断全文）注入 generate——禁止复读，重教必须给增量（错因应用/换角度深化/未覆盖细节），防每轮 60% 重复的复读机；
 - LLM 输出截断防护：`core/llm.py` 检查 finish_reason=length 显式抛 `LLMOutputError`（JSON 必然残缺，不做无意义重试）；
 - 知识条目必带 `knowledge_type`（`memory` 事实/定义/术语 / `concept` 概念与关系 / `procedure` 步骤技能，枚举在 `scripts/init_db.py.KnowledgeType`，DB 列 DEFAULT 'concept'），描述知识本体（影响教学方式/门槛/复习节奏），不绑定题型，core/plan.KnowledgeEntry 同持此字段（默认 concept）；

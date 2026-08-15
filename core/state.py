@@ -81,7 +81,8 @@ class AgentState(TypedDict, total=False):
     outline: dict
     draft: list[DraftClaim]
     cited_entries: list[RetrievedEntry]
-    retry_context: str  # 重教轮错因回流：上一轮题目+学生作答+评估（仅 retry 轮注入）
+    retry_context: str  # 错因回流：上一轮**答错**的题目+作答+评估（extension 论断触发源）
+    advance_hint: str  # 识别通过推进：上一轮 choice 答对（core 论断向应用推进，不触发 extension）
     taught_previously: list[str]  # 重教轮去重：之前各轮已教过的论断文本（禁止复读，重教必须给增量）
 
     # review：辩论链追加式累积；feedback 是生成 Agent 下一轮的唯一反馈通道
