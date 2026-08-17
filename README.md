@@ -8,13 +8,15 @@
 
 ```
 教学内核（诊断/检索/生成/审核/出题/判分/决策/脚手架）  ███████████ 完成，冻结打磨
-会话持久化 + 资源沉淀层 + API                          ████░░░░░░░ W1 进行中
-Web 三画面（学生面 / 裁判面 / 报告）                    ░░░░░░░░░░░ W2
-评测（三指标 + 50 组画像）                              ░░░░░░░░░░░ W2
+会话持久化 + 资源沉淀层 + API                          ███████████ W1 完成
+Web 三画面（学生面 / 裁判面 / 报告）+ 回放              ███████████ W2 完成
+评测（三指标 + 50 组画像 + 批量脚本）                   █████████░ 口径与小批已验，全量批跑待 W3 归档
 交付（compose / 视频 / 提交包）                         ░░░░░░░░░░░ W3
 ```
 
-测试基线：pytest 120 通过 · pyright 0 errors · ruff 全绿。
+测试基线：pytest 176 通过 · pyright 0 errors · ruff 全绿 · web typecheck/lint/build 全绿 · 真实 LLM E2E 闭环全通。
+
+小批评测实测（2 组，`v0.3.0`）：幻觉率 0.94%（目标 <5%）· 画像-资源适配率 88.9%（≥85%）· 知识点覆盖率 87.2%（全量批跑再判定）。
 
 ## 快速开始
 
@@ -31,19 +33,24 @@ uv run python scripts/run_cli.py test1              # 手动作答
 uv run python scripts/run_cli.py test1 --sim 0.8    # 模拟学生，0.8 概率答对
 uv run python scripts/run_cli.py test1 --max-rounds 1   # 单轮验证
 
-# API（W1 起）
-uv run uvicorn api.main:app --reload --port 8000
-
-# 前端（W1 脚手架后）
-cd web && pnpm install && pnpm dev
+# API + Web 三画面（学生面 / 裁判面 / 报告 / 回放）
+uv run uvicorn api.main:app --port 8000     # BGE-M3 首次加载约 30-60s
+cd web && pnpm install && pnpm dev          # http://localhost:3000
 
 # 测试与检查
 uv run pytest -v
-uv run pyright core/ scripts/ tests/ && uv run ruff check .
+uv run pyright core/ scripts/ tests/ api/ evals/ && uv run ruff check .
+cd web && pnpm typecheck && pnpm lint
+
+# 批量评测（三指标 JSON 报告）
+uv run python evals/run.py --limit 5    # 小批先验幻觉率
+uv run python evals/run.py              # 全量 50 组（并发 5，断点续跑）
 
 # 交付
 docker compose up --build
 ```
+
+Web 路由一览：`/`（画像表单，双画像预设）· `/sessions`（历史会话列表 + 回放入口）· `/sessions/{id}`（学生面工作台）· `/sessions/{id}/orchestration`（裁判面，live 实时跟随 / replay 播放器）· `/sessions/{id}/report`（学情报告三图 + 资源包浏览）。无 LLM key 环境用历史会话回放演示。
 
 ## 技术栈
 
