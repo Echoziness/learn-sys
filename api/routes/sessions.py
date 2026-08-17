@@ -18,6 +18,7 @@ from api.models import (
     CreateSessionRequest,
     CreateSessionResponse,
     PlanTopicOut,
+    SessionListItemOut,
 )
 from api.sse import sse_frame
 from core.mastery import compute_mastery
@@ -68,6 +69,13 @@ async def create_session(req: CreateSessionRequest, request: Request):
     )
 
 
+@router.get("", response_model=list[SessionListItemOut])
+async def list_sessions(request: Request, limit: int = 100):
+    """历史会话列表（回放入口页）。"""
+    store, _ = _deps(request)
+    return store.list_sessions(limit=min(limit, 500))
+
+
 @router.get("/{session_id}")
 async def get_session(session_id: str, request: Request):
     store, _ = _deps(request)
@@ -77,7 +85,7 @@ async def get_session(session_id: str, request: Request):
     return session
 
 
-@router.post("/{session_id}/teach/{entry_id}")
+@router.post("/{session_id}/topics/{entry_id}/teach")
 async def teach(session_id: str, entry_id: str, request: Request):
     """执行一轮教学：SSE 推送 topic_start → retrieve/generate/review → teach_delivered。"""
     store, loop = _deps(request)
@@ -105,7 +113,7 @@ async def teach(session_id: str, entry_id: str, request: Request):
     return StreamingResponse(run(), media_type="text/event-stream")
 
 
-@router.post("/{session_id}/question/{entry_id}")
+@router.post("/{session_id}/topics/{entry_id}/question")
 async def question(session_id: str, entry_id: str, request: Request):
     store, loop = _deps(request)
     _session_or_404(store, session_id)
@@ -199,13 +207,102 @@ async def resources(session_id: str, request: Request):
 
 
 @router.get("/{session_id}/replay")
-async def replay(session_id: str, request: Request, after_seq: int = 0):
-    """回放模式：按 seq 重放历史事件流（评委无 LLM key 环境的演示保障）。"""
+async def replay(session_id: str, request: Request, after_seq: int = 0, format: str = "sse"):
+    """回放模式：按 seq 重放历史事件流（评委无 LLM key 环境的演示保障）。
+
+    format=json 返回带 seq 的数组（前端播放器步进/进度条用）；默认 SSE 流。
+    """
     store, _ = _deps(request)
     _session_or_404(store, session_id)
+
+    if format == "json":
+        return [
+            {
+                "seq": e.seq,
+                "event_type": e.event_type,
+                "payload": e.payload,
+                "created_at": e.created_at,
+            }
+            for e in store.load_events(session_id, after_seq=after_seq)
+        ]
 
     async def gen() -> AsyncIterator[str]:
         for event in store.load_events(session_id, after_seq=after_seq):
             yield sse_frame(event.event_type, event.payload)
 
     return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+@router.get("/{session_id}/stream")
+async def stream(session_id: str, request: Request, after_seq: int = 0):
+    """实时事件订阅（裁判面跟随另一个 tab 的会话进度）。
+
+    顺序保证：先 subscribe 再补读历史——两者重叠的事件按 seq 去重。
+    session_end / error 后自然收流；其余情况保持连接（keep-alive 注释帧）。
+    """
+    store, _ = _deps(request)
+    _session_or_404(store, session_id)
+    queue = store.subscribe(session_id)
+
+    async def gen() -> AsyncIterator[str]:
+        last_seq = after_seq
+        try:
+            for event in store.load_events(session_id, after_seq=last_seq):
+                last_seq = event.seq
+                yield sse_frame(event.event_type, event.payload)
+                if event.event_type in ("session_end", "error"):
+                    return
+            while True:
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=15.0)
+                except TimeoutError:
+                    yield ": keep-alive\n\n"
+                    continue
+                if event.seq <= last_seq:  # 补读与订阅的重叠
+                    continue
+                last_seq = event.seq
+                yield sse_frame(event.event_type, event.payload)
+                if event.event_type in ("session_end", "error"):
+                    return
+        finally:
+            store.unsubscribe(session_id, queue)
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+@router.post("/{session_id}/end")
+async def end_session(session_id: str, request: Request, status: str = "finished"):
+    """结束会话：发 session_end 汇总事件并落状态（报告页前置动作）。"""
+    store, loop = _deps(request)
+    _session_or_404(store, session_id)
+    ctx = loop.rebuild_context(session_id)
+    await loop.end_session(ctx, status=status if status in ("finished", "aborted") else "finished")
+    return {"session_id": session_id, "status": status}
+
+
+@router.get("/{session_id}/topics/{entry_id}/state")
+async def topic_state(session_id: str, entry_id: str, request: Request):
+    """主题进度状态（学生面驱动循环的依据：巩固模式跳过教学 / regress 跳转目标）。
+
+    全部从 DB 历史推导（D2），web 刷新后调用即可恢复交互位置。
+    """
+    store, loop = _deps(request)
+    _session_or_404(store, session_id)
+    ctx = loop.rebuild_context(session_id)
+    progress = loop.progress(session_id, entry_id)
+    try:
+        entry = ctx.entry(entry_id)
+        prereq_id = entry.prerequisites[0] if entry.prerequisites else None
+        title = entry.title
+    except KeyError:
+        prereq_id = None
+        title = entry_id
+    return {
+        "entry_id": entry_id,
+        "title": title,
+        "needs_teaching": progress.needs_teaching,
+        "next_round_no": progress.next_round_no,
+        "scaffold_pending": progress.scaffold_pending,
+        "prereq_id": prereq_id,
+        "has_answered": progress.last_round is not None,
+    }

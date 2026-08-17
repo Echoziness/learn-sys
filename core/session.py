@@ -140,6 +140,35 @@ class SessionStore:
             "finished_at": row[9],
         }
 
+    def list_sessions(self, *, limit: int = 100) -> list[dict[str, Any]]:
+        """会话列表（回放入口页）。含事件数/资源包数/规划主题数，供列表展示与筛选。"""
+        db = self._connect()
+        try:
+            rows = db.execute(
+                "SELECT s.session_id, s.learner_id, s.difficulty_level, s.status, "
+                "s.created_at, s.finished_at, s.plan_json, "
+                "(SELECT COUNT(*) FROM session_events e WHERE e.session_id = s.session_id), "
+                "(SELECT COUNT(*) FROM resource_packages p WHERE p.session_id = s.session_id) "
+                "FROM sessions s ORDER BY s.created_at DESC, s.rowid DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        finally:
+            db.close()
+        return [
+            {
+                "session_id": r[0],
+                "learner_id": r[1],
+                "difficulty_level": r[2],
+                "status": r[3],
+                "created_at": r[4],
+                "finished_at": r[5],
+                "topic_count": len((json.loads(r[6]) or {}).get("topics", [])) if r[6] else 0,
+                "event_count": r[7],
+                "package_count": r[8],
+            }
+            for r in rows
+        ]
+
     # ---------- 事件流 ----------
 
     async def emit(self, session_id: str, event_type: str, payload: dict[str, Any]) -> SessionEvent:

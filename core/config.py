@@ -34,6 +34,9 @@ class Settings(BaseModel):
     bge_model_path: str = "data/bge-m3"
     seed_dir: str = "data/seeds"
 
+    # 浏览器侧来源（web 前端地址），逗号分隔；容器交付时浏览器访问端口不变则无需配置
+    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
+
     retrieval_top_k: int = Field(default=5, ge=1)
     rrf_k: int = Field(default=60, ge=1)
     # 向量余弦相似度低于此值且 FTS 无命中时，判定该盲区"知识库未覆盖"
@@ -67,6 +70,9 @@ class Settings(BaseModel):
             database_path=os.getenv("DATABASE_PATH", "data/knowledge.db"),
             bge_model_path=os.getenv("BGE_MODEL_PATH", "data/bge-m3"),
             seed_dir=os.getenv("SEED_DIR", "data/seeds"),
+            cors_origins=[
+                o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",") if o.strip()
+            ],
         )
 
 

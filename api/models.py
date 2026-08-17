@@ -48,6 +48,18 @@ class SessionEventOut(BaseModel):
     created_at: str
 
 
+class SessionListItemOut(BaseModel):
+    session_id: str
+    learner_id: str
+    difficulty_level: str | None = None
+    status: str
+    created_at: str
+    finished_at: str | None = None
+    topic_count: int = 0
+    event_count: int = 0
+    package_count: int = 0
+
+
 __all__ = [
     "AnswerRequest",
     "CreateSessionRequest",
@@ -55,4 +67,5 @@ __all__ = [
     "PlanTopicOut",
     "ProfileBackground",
     "SessionEventOut",
+    "SessionListItemOut",
 ]

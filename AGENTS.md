@@ -46,8 +46,9 @@ learn-sys/
 │   └── logging.py           # structlog JSON 配置
 ├── api/                     # FastAPI（薄层，只做序列化→转发→推流；启动时常驻装配 provider/encoder/graph）
 │   ├── models.py            # API schema（Pydantic）
-│   ├── main.py              # app 工厂
-│   └── routes/              # sessions/teach/question/answers/report/replay（契约见架构文档 §5）
+│   ├── main.py              # app 工actory + CORS（Settings.cors_origins，env CORS_ORIGINS）
+│   ├── sse.py               # SSE 帧编码（实时与回放同构）
+│   └── routes/sessions.py   # 全部端点（契约见架构文档 §5；教学/出题路径 /topics/{entry}/teach|question）
 ├── scripts/                 # 组合根
 │   ├── cli_input.py         # CLI 交互输入层（readline 行编辑 + 输入边界净化；刻意轻量，主战场在 Web）
 │   ├── init_db.py           # 幂等知识库 loader + 会话表迁移（数据来自 data/seeds/，不内嵌数据）
@@ -58,7 +59,13 @@ learn-sys/
 │   └── knowledge.db         # 知识库 + FTS5 + vec + 会话/事件/资源包（单文件，由 init_db 生成）
 ├── tests/                   # pytest，与 evals/metrics.py 同口径
 ├── evals/                   # metrics.py（三指标口径 SSOT）+ profiles/（50 组）+ gen_profiles.py（可复现生成）+ run.py（并发跑批/断点续跑）
-├── web/                     # Next.js 15：学生面 / 裁判面(orchestration) / 报告(report)（脚手架完成，三画面 W2 实现）
+├── web/                     # Next.js 15（W2 三画面已上线）
+│   ├── app/                 # /（画像表单）/ sessions（列表）/ sessions/[id]（学生面工作台）
+│   │                        # / sessions/[id]/orchestration（裁判面，live/replay 双模式）
+│   │                        # / sessions/[id]/report（Recharts 三图 + 资源包浏览）
+│   ├── components/          # student/ orchestration/ report/ shared/ + ui/（shadcn，禁手改）
+│   └── lib/                 # api.ts（REST）/ sse.ts（POST 流解析 + GET EventSource）/ types.ts（事件+响应 SSOT）
+│                            # / orchestration-reducer.ts（事件→节点状态纯函数）
 └── docker-compose.yml       # api + web + db-init（三服务已验收：db-init → api healthy → web）
 ```
 
@@ -147,6 +154,7 @@ diagnose（LLM 一次，输出 gap_ids）→ plan（确定性切片：ID 投影 
 ### 3.7 会话层（W1 已上线）
 
 - **进度从历史推导**：reached_answer / scaffold_pending / retry_context 全部由 `topic_rounds` + `mastery_snapshots` 历史计算（`teach_loop.TopicProgress`），无内存会话态——任何进程重启后从 DB 续跑（api 无状态的前提）；
+- **Web 端点补充**（W2）：`GET /api/sessions`（列表，回放入口）；`GET /{id}/stream?after_seq=`（实时 SSE 订阅：先 subscribe 再补读历史、按 seq 去重，裁判面跟随另一 tab）；`GET /{id}/replay?format=json`（带 seq 的 JSON 数组，播放器步进用）；`POST /{id}/end`（session_end 收口）；`GET /{id}/topics/{entry}/state`（needs_teaching/scaffold_pending/prereq_id——Web 工作台镜像 CLI 状态机与刷新恢复的依据）；
 - **事件流一表三用**：`session_events`（seq 会话内单调 + payload 自包含）同时服务裁判面渲染、回放演示、审计日志；实时 = emit 写库 + 进程内订阅推送，回放 = 按 seq 读表，前端渲染代码复用；
 - **事件协议**：session_start / diagnose_done / plan_done / topic_start / retrieve_done / generate_done / review_done / teach_delivered / question_built / answer_graded / scaffold_offered / topic_advance / topic_regress / package_saved / session_end（+error）——payload 字段见架构文档 §4；
 - **教学轮生命周期**：next_question 落 pending 轮（幂等，web 刷新安全）→ handle_answer 填充 answer/grade/decision → 重教时 delete_pending_rounds 作废；
@@ -197,6 +205,10 @@ diagnose（LLM 一次，输出 gap_ids）→ plan（确定性切片：ID 投影 
 | 学生答错后题目反而更难（死亡螺旋：错→重教加深→题更深→再错→regress） | 出题深度跟随"最新教学轮"而非"学生状态"——重教轮 extension 论断（深水区）进了出题上下文，且无已出题清单（换皮重考） | retry 信号（遗漏清单+连错次数）注入出题：只针对最重要遗漏要点降维出题；extension 失败后禁入题；previous_questions 防重考 |
 | 脚手架题干问"正确做法"但选项是关键词堆（语义崩坏） | 题干模板与选项格式独立拼接——LLM 干扰项生成时看不到最终题干 | LLM 一次生成完整三件套（题干+正确项+干扰项），服务端校验（词重叠+互异），失败回退时题干改为与关键词堆匹配的问法 |
 | 评测聚合幻觉率虚高至 96%（实际 <10%） | teach_delivered 事件的 claim_index 是**事件内局部编号**，跨事件聚合时全局重编号但 verdicts 没同步偏移——裁决全部落空，fail-closed 记 unsupported | 聚合时 claims 与 verdicts 同用 base 偏移（`base + 局部编号`），见 evals/run.py |
+| shadcn CLI 在 `pnpm dlx` 下报 ERR_PACKAGE_PATH_NOT_EXPORTED（MCP sdk 引 zod 子路径） | pnpm store 链接的 @modelcontextprotocol/sdk 与 zod v3 exports 冲突，dlx 走 store 链接 | 换 `npx -y shadcn@latest add <组件>`（npm 临时安装不踩 store 链接） |
+| 前端 map 回调参数 implicit any（react-query 5.101 + recharts 3 类型全崩、tsc 却不报库错） | typescript 5.0.2 < 5.4：`NoInfer` 类型未定义，react-query 类型重载静默失效（skipLibCheck 掩盖库内报错） | `pnpm add -D typescript@^5.8`——新前端依赖若用 5.4+ 类型特性，先查 TS 版本 |
+| Web 调教学端点 404（E2E 冒烟抓出） | 路由实现是 `/{id}/teach/{entry}`，架构文档 §5 契约是 `/{id}/topics/{entry}/teach`，前端按文档调 | 以架构文档为契约修后端路由；新端点必须先在文档定路径再实现 |
+| 前端 Button 无 asChild（shadcn new-york 新版不带 Slot） | 组件库版本差异，asChild 是 Radix Slot 的可选能力非标配 | Link 跳转用 `<Link className={button样式}>` 或 onClick + router.push |
 | choice 答对轮幻觉率超标（实测 6-25%） | `_ADVANCE_HINT` 引导 LLM 讲"常见误解/易错点/选型建议"——条目里没有这些内容，审核（正确地）判 unsupported | 推进提示限定"条目概念范围内的深化"，GENERATE_PROMPT 显式声明扩展性内容会被打回——生成端与审核锚点必须同源，不能一边引导发散一边严格拦截 |
 
 ## 7. 开发模式（AI 生成代码遵循以下流程）

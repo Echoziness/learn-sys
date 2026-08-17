@@ -36,6 +36,28 @@ def test_session_lifecycle(tmp_path):
     assert finished is not None and finished["status"] == "finished"
 
 
+def test_list_sessions(tmp_path):
+    store = make_store(tmp_path)
+    s1 = store.create_session("alpha", {})
+    store.save_diagnosis(
+        s1, gap_ids=[], difficulty_level="beginner", profile_summary="", plan={},
+    )
+    asyncio.run(store.emit(s1, "session_start", {}))
+    s2 = store.create_session("beta", {})
+    store.save_diagnosis(
+        s2, gap_ids=[], difficulty_level="advanced", profile_summary="",
+        plan={"topics": [{"entry_id": "A"}, {"entry_id": "B"}]},
+    )
+    items = store.list_sessions()
+    # 创建时间倒序：后创建的在前
+    assert [i["learner_id"] for i in items] == ["beta", "alpha"]
+    assert items[0]["difficulty_level"] == "advanced"
+    assert items[0]["topic_count"] == 2
+    assert items[1]["event_count"] == 1
+    store.finish_session(s2)
+    assert store.list_sessions()[0]["status"] == "finished"
+
+
 def test_emit_seq_monotonic_and_load(tmp_path):
     store = make_store(tmp_path)
     sid = store.create_session("test1", {})

@@ -92,10 +92,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
+    # CORS 来源走 Settings（env 唯一读取点）；此处不要求 LLM 配置——
+    # create_app 在 import 期执行，LLM 装配留给 lifespan
+    settings = Settings.from_env(require_llm=False)
     app = FastAPI(title="learn-sys", version="0.2.0", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:3000"],
+        allow_origins=settings.cors_origins,
         allow_methods=["*"],
         allow_headers=["*"],
     )
