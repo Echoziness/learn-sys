@@ -114,8 +114,9 @@ def print_question(question: Question) -> None:
 
 def print_feedback(result: RoundResult) -> None:
     o = result.outcome
-    print(f"[反馈] {'✓ 正确' if o.is_correct else '✗ 不完整'} "
-          f"（覆盖率 {o.grade.keyword_coverage:.0%}）")
+    # 覆盖率只对 answer 题有意义（choice 判分只认标签，恒为 0——显示会误导）
+    cov = f"（覆盖率 {o.grade.keyword_coverage:.0%}）" if result.question.question_type == "answer" else ""
+    print(f"[反馈] {'✓ 正确' if o.is_correct else '✗ 不完整'} {cov}")
     if o.missed_requirements:
         print(f"[题意核对] 遗漏要求: {'；'.join(o.missed_requirements)}")
     print(o.evaluation)

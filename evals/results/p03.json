@@ -3,27 +3,27 @@
   "name": "在职补短板·有工具经验",
   "expect_level": "",
   "diagnosed_level": "intermediate",
-  "session_id": "96d473675cec4f258b728c1c9fd7f2b2",
-  "hallucination_rate": 0.1444,
-  "claims_total": 90,
+  "session_id": "4e2be61f89c34785afee97a5c2d78abe",
+  "hallucination_rate": 0.0417,
+  "claims_total": 72,
   "tier_match": {
-    "rate": 1.0,
-    "matched": 3,
-    "total": 3
+    "rate": 0.8,
+    "matched": 4,
+    "total": 5
   },
   "keyword_coverage": {
-    "rate": 0.6154,
-    "hit": 8,
-    "total": 13
+    "rate": 1.0,
+    "hit": 26,
+    "total": 26
   },
-  "topics_advanced": 3,
-  "mastery_mean": 0.6202,
+  "topics_advanced": 5,
+  "mastery_mean": 0.7506,
   "masteries": {
-    "关系型数据库基本概念": 0.0,
-    "pandas DataFrame 基础": 0.8,
-    "SELECT 基础查询": 0.8,
-    "pandas 数据过滤与排序": 0.661,
-    "WHERE 条件过滤": 0.661,
-    "ORDER BY 与 LIMIT": 0.8
+    "关系型数据库基本概念": 1.0,
+    "SELECT 基础查询": 0.304,
+    "JOIN 表连接": 0.8,
+    "ORDER BY 与 LIMIT": 0.8,
+    "WHERE 条件过滤": 0.8,
+    "聚合函数与 GROUP BY": 0.8
   }
 }

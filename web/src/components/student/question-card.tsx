@@ -113,7 +113,8 @@ export function QuestionCard({
               <div className="flex justify-between text-xs text-muted-foreground">
                 <span>主题掌握度</span>
                 <span>
-                  {feedback.mastery.toFixed(2)}（门槛 0.7）· 关键词覆盖 {Math.round(feedback.coverage * 100)}%
+                  {feedback.mastery.toFixed(2)}（门槛 0.7）
+                  {question.question_type === "answer" && ` · 关键词覆盖 ${Math.round(feedback.coverage * 100)}%`}
                 </span>
               </div>
               <Progress value={feedback.mastery * 100} className="h-2" />

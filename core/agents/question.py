@@ -86,10 +86,18 @@ class ScaffoldOutput(BaseModel):
     )
 
 
-class DistractorOutput(BaseModel):
-    """概念辨认选择题的干扰项组（choice 题干扰项 LLM 化）。"""
+class ChoiceQuestionOutput(BaseModel):
+    """概念辨析选择题完整输出：题干 + 陈述句正确项 + 误解干扰项。
 
-    distractors: list[str] = Field(default_factory=list, description="混淆概念词组（3 个）")
+    取代旧的"哪组要点属于X"关键词归属题——那种题测的是出席记录不是理解：
+    不读讲义也能按词面匹配答对。概念辨析题要求学生真的分得清对错说法。
+    """
+
+    question: str = Field(description="概念辨析选择题题干")
+    correct: str = Field(description="正确选项（一句完整、与条目一致的陈述）")
+    distractors: list[str] = Field(
+        default_factory=list, description="干扰项（3 个，典型误解的完整陈述句）"
+    )
 
 
 class QuestionInput(TypedDict, total=False):
@@ -161,6 +169,42 @@ def _tokenize(text: str) -> set[str]:
         else:
             out.append(" ")
     return {t for t in "".join(out).split() if t}
+
+
+def _bigram_overlap(text: str, source: str) -> int:
+    """CJK 二字组 + 拉丁词的重叠计数（跑题检测用）。
+
+    逐字单字切分下常用字撞车严重（"机器学习标注数据"与"数据库标识"共享
+    数/据/标三个单字）——二字组对齐中文词汇粒度，跑题内容几乎不可能撞出
+    2 个词。拉丁词（SQL、pandas）整词参与。
+    """
+    def seq(s: str) -> list[str]:
+        items: list[str] = []
+        for ch in s.lower():
+            if "\u4e00" <= ch <= "\u9fff":
+                items.append(ch)
+            elif ch.isalnum():
+                if items and len(items[-1]) > 1 and items[-1].isascii():
+                    items[-1] += ch
+                else:
+                    items.append(ch)
+            else:
+                items.append("\0")
+        return items
+
+    def bigrams(s: str) -> set[str]:
+        items = seq(s)
+        out: set[str] = set()
+        for a, b in zip(items, items[1:], strict=False):
+            if a == "\0" or b == "\0":
+                continue
+            if len(a) == 1 and len(b) == 1:
+                out.add(a + b)  # CJK 二字组
+            else:
+                out.add(a if len(a) > 1 else b)  # 拉丁整词
+        return out
+
+    return len(bigrams(text) & bigrams(source))
 
 
 SCAFFOLD_PROMPT = """学生在上一道回答题中答得不好，请设计一道选择题脚手架，
@@ -257,38 +301,58 @@ async def scaffold_node(
     return validate_scaffold(output, entry, claims)
 
 
-CHOICE_DISTRACTOR_PROMPT = """为知识条目的概念辨认选择题生成干扰项。
+CHOICE_PROMPT = """你是培训讲师，刚给学生讲完一个知识点，现在出一道概念辨析选择题
+检验学生是否真的理解了（而不是记住了几个词）。
 
 【知识条目】
 {entry}
 
-【正确选项】（本条目的核心概念词组，服务端已定）：{correct_text}
+【本轮教学论断】（正确项必须从这些论断/条目内容提炼，禁止引入之外的概念）
+{claims}
 
-生成 3 个干扰词组（每组 3-5 个顿号分隔的概念词）：
-- 面向初学者：使用与本条目同领域、容易混淆、但**不属于本条目核心**的概念词；
-- 每组可混入 1-2 个本条目的词 + 1-2 个混淆概念（半真半假，提高区分度）；
-- 不得与正确选项完全相同，组间不得重复。
+学员难度水平：{difficulty}
+{previous_section}
+【出题要求】
+1. question：概念辨析题干——直接考查对概念的理解或运用（15-60 字），如
+   "关于主键的作用，下列说法正确的是？"、"小明想去除查询结果中的重复行，
+   他应该怎么做？"。禁止问"哪组要点属于X"这类关键词归属题——那是元数据
+   识别，测不出理解。
+2. correct：正确选项——一句完整、自洽的陈述（10-60 字），内容忠于条目与
+   教学论断，学生选它即证明理解了概念本身。
+3. distractors：3 个干扰项，每项为一句完整陈述（10-60 字）：
+   - 是该概念的**典型误解**（初学者真会犯的错，不是荒谬选项）；
+   - 与正确项讨论同一个概念，但表述错误（作用说反、条件说错、概念混淆）；
+   - 不得与正确项意思相同，选项间不得互相重复。
 
-严格按 JSON 输出：{{"distractors": ["词1、词2、词3", "...", "..."]}}"""
+严格按 JSON 输出：
+{{"question": "...", "correct": "...", "distractors": ["...", "...", "..."]}}"""
 
 
-async def build_choice_distractors(
-    provider: LLMProvider,
-    entry: dict[str, Any],
-    correct_text: str,
+async def choice_node(
+    state: dict[str, Any],
     *,
+    provider: LLMProvider,
     model: str | None = None,
-) -> list[str]:
-    """choice 题干扰项 LLM 化：同域混淆概念组，替换跨主题关键词堆。
+) -> ChoiceQuestionOutput | None:
+    """生成概念辨析选择题（题干 + 陈述句正确项 + 误解干扰项），服务端校验。
 
-    失败/校验不过返回空列表，由调用方回退确定性干扰项（fail-closed）。
+    失败返回 None，由调用方回退确定性构造（fail-closed）。
     """
+    entry = state.get("entry") or {}
+    claims = state.get("taught_claims", [])
+    previous = state.get("previous_questions", [])
+    previous_section = (
+        "【已出过的题】（禁止原题重考，必须换概念换角度）：\n"
+        + "\n".join(f"- {q}" for q in previous[-5:])
+        if previous
+        else ""
+    )
     try:
         output = await provider.chat_validated(
             [
                 {
                     "role": "user",
-                    "content": CHOICE_DISTRACTOR_PROMPT.format(
+                    "content": CHOICE_PROMPT.format(
                         entry=json.dumps(
                             {
                                 "id": entry.get("id"),
@@ -299,17 +363,49 @@ async def build_choice_distractors(
                             ensure_ascii=False,
                             indent=2,
                         ),
-                        correct_text=correct_text,
+                        claims=_format_claims(claims),
+                        difficulty=state.get("difficulty_level", "beginner"),
+                        previous_section=previous_section,
                     ),
                 }
             ],
-            schema=DistractorOutput,
+            schema=ChoiceQuestionOutput,
             model=model,
             temperature=0.3,
         )
     except Exception:
-        return []
-    return validate_distractors(output.distractors, correct_text)
+        return None
+    return validate_choice_question(output, entry, claims)
+
+
+def validate_choice_question(
+    output: ChoiceQuestionOutput, entry: dict[str, Any], claims: list[Any]
+) -> ChoiceQuestionOutput | None:
+    """服务端校验概念辨析选择题：来源可溯（bigram 重叠）+ 结构完整 + 互异。
+
+    正确项须与条目/教学论断有 ≥2 个词级重叠（防跑题）；干扰项须 ≥1 个
+    （误解项必须仍在讨论同一概念，但只提单个术语也算同域）；长度与互异
+    校验。任一硬伤返回 None（调用方回退确定性构造）。
+    """
+    question = (output.question or "").strip()
+    correct = (output.correct or "").strip()
+    if not (10 <= len(question) <= 80) or not (6 <= len(correct) <= 80):
+        return None
+    claim_text = " ".join(
+        c if isinstance(c, str) else c.get("text", "") for c in claims or []
+    )
+    source = entry.get("content", "") + " " + entry.get("title", "") + " " + claim_text
+    if _bigram_overlap(correct, source) < 2:
+        return None
+    distractors = validate_distractors(output.distractors, correct)
+    if len(distractors) < 2:
+        return None
+    for d in distractors:
+        if not (6 <= len(d) <= 80):
+            return None
+        if _bigram_overlap(d, source) < 1:
+            return None
+    return ChoiceQuestionOutput(question=question, correct=correct, distractors=distractors)
 
 
 def validate_expected_keywords(keywords: list[str], *sources: str) -> list[str]:
@@ -386,13 +482,14 @@ async def question_node(
 
 
 __all__ = [
+    "ChoiceQuestionOutput",
     "QuestionOutput",
     "ScaffoldOutput",
-    "DistractorOutput",
     "validate_expected_keywords",
     "validate_distractors",
     "validate_scaffold",
-    "build_choice_distractors",
+    "validate_choice_question",
+    "choice_node",
     "scaffold_node",
     "question_node",
 ]

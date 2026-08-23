@@ -59,3 +59,66 @@ def test_distractors_blank_skipped():
 def test_distractors_all_invalid_returns_empty():
     """全部与正确项相同或为空 → 空列表，由调用方回退确定性干扰项。"""
     assert validate_distractors(["X", "X", ""], "X") == []
+
+
+# ── choice 概念辨析题服务端校验（Fix 1，2026-08-23）──────────────────────
+
+from core.agents.question import ChoiceQuestionOutput, validate_choice_question  # noqa: E402
+
+ENTRY = {"id": "E1", "title": "主键与外键", "content": CONTENT}
+CLAIMS = [{"text": "主键唯一标识表中的一行记录", "claim_type": "core"}]
+
+
+def _choice(**overrides):
+    base = {
+        "question": "关于主键的作用，下列说法正确的是？",
+        "correct": "主键用于唯一标识表中的一行记录",
+        "distractors": [
+            "主键的作用是让一行记录可以重复出现",
+            "主键可以标识多行相同的记录",
+            "主键主要用于加密表中的数据",
+        ],
+    }
+    base.update(overrides)
+    return ChoiceQuestionOutput(**base)
+
+
+def test_choice_valid_output_passes():
+    out = validate_choice_question(_choice(), ENTRY, CLAIMS)
+    assert out is not None
+    assert out.question.startswith("关于主键")
+
+
+def test_choice_keyword_pile_stem_rejected():
+    """题干过短（如旧式元数据题）被拒——最低长度防线。"""
+    out = validate_choice_question(_choice(question="哪个对？"), ENTRY, CLAIMS)
+    assert out is None
+
+
+def test_choice_offtopic_correct_rejected():
+    """正确项与条目/论断零词重叠（跑题）被拒。"""
+    out = validate_choice_question(
+        _choice(correct="机器学习模型需要大量标注数据训练"), ENTRY, CLAIMS
+    )
+    assert out is None
+
+
+def test_choice_offtopic_distractor_rejected():
+    """干扰项跑题（与源零重叠）被拒——误解项必须仍在讨论同一概念。"""
+    out = validate_choice_question(
+        _choice(distractors=["量子计算正在进行纠错研究", "主键可以重复", "主键标识多行"])
+        , ENTRY, CLAIMS
+    )
+    assert out is None
+
+
+def test_choice_duplicate_distractors_trimmed():
+    """重复/与正确项相同的干扰项被裁剪；不足 2 个则整体回退。"""
+    out = validate_choice_question(
+        _choice(distractors=["主键可以重复", "主键可以重复", "主键标识多行"]), ENTRY, CLAIMS
+    )
+    assert out is not None
+    assert len(out.distractors) == 2
+    assert validate_choice_question(
+        _choice(distractors=["主键可以重复", "主键可以重复"]), ENTRY, CLAIMS
+    ) is None

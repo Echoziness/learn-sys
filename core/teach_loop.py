@@ -17,13 +17,20 @@ expected 判分要点永不进事件（学生视野隔离），只落 topic_roun
 from __future__ import annotations
 
 import dataclasses
+import random
 from dataclasses import dataclass, field
 from typing import Any
 
 import structlog
 
 from core.agents.diagnose import diagnose_node
-from core.agents.question import QuestionInput, build_choice_distractors, question_node, scaffold_node
+from core.agents.question import (
+    ChoiceQuestionOutput,
+    QuestionInput,
+    choice_node,
+    question_node,
+    scaffold_node,
+)
 from core.answer_pipeline import AnswerOutcome, process_answer
 from core.assess import Question, build_question
 from core.config import Settings
@@ -237,7 +244,7 @@ class TeachLoop:
         self._store = store
         self._settings = settings
         self._entries = entries
-        self._choice_cache: dict[str, tuple[str, ...]] = {}  # choice 干扰项按 entry_id 缓存
+        self._choice_q_cache: dict[str, ChoiceQuestionOutput | None] = {}  # choice 题按 entry_id 缓存
 
     # ---------- 诊断与切片 ----------
 
@@ -463,7 +470,7 @@ class TeachLoop:
             if question.question_type == "answer":
                 question = await self._build_answer_question(ctx, entry, question, round_no, progress)
             else:
-                question = await self._enhance_choice(ctx, entry, question)
+                question = await self._build_llm_choice(ctx, entry, question, progress)
 
         # question_id 编码轮次与题型：资源包按 id 去重时不同轮/题型不互相覆盖
         suffix = (
@@ -513,7 +520,7 @@ class TeachLoop:
         上下文契约：taught_claims（深度上限，带 claim_type 分层）、
         retry 信号（失败降维）、difficulty_level、previous_questions（防重考）。
         """
-        taught = self._last_taught_claims(ctx.session_id, entry.id)
+        taught = self._all_taught_claims(ctx.session_id, entry.id)
         q_state: QuestionInput = {
             "entry": {
                 "id": entry.id,
@@ -548,46 +555,70 @@ class TeachLoop:
             expected_keywords=expected,
         )
 
-    async def _enhance_choice(
-        self, ctx: SessionContext, entry: KnowledgeEntry, question: Question
+    async def _build_llm_choice(
+        self,
+        ctx: SessionContext,
+        entry: KnowledgeEntry,
+        fallback: Question,
+        progress: TopicProgress,
     ) -> Question:
-        """choice 干扰项 LLM 化：同域混淆概念替换跨主题关键词堆（按 entry 缓存）。
+        """choice 题概念化：LLM 生成概念辨析题（题干 + 陈述句正确项 + 误解干扰项）。
 
-        判分只认选项标签——干扰项内容变化无判分影响，纯提升区分度。
-        失败/校验不过保持确定性干扰项（fail-closed）。
+        - 缓存按 entry_id（同会话幂等）；该条目已有**已作答**的 choice 时缓存失效
+          ——答错重教后不得原题重考；
+        - LLM 失败/校验不过回退确定性构造（fail-closed）；
+        - 判分只认选项标签（assess 不变），正确项位置随机化（测评题防位置惯性）。
         """
-        cached = self._choice_cache.get(entry.id)
-        if cached is not None:
-            if cached:
-                return self._apply_choice_distractors(question, list(cached))
-            return question
-        correct_text = question.options[0].split(". ", 1)[-1] if question.options else ""
-        dists: list[str] = []
-        if correct_text:
-            dists = await build_choice_distractors(
-                self._provider,
-                {
-                    "id": entry.id,
-                    "title": entry.title,
-                    "content": entry.content,
-                    "keywords": entry.keywords,
-                },
-                correct_text,
-                model=self._settings.question_model,
-            )
-        self._choice_cache[entry.id] = tuple(dists)
-        if len(dists) < 2:
-            return question
-        return self._apply_choice_distractors(question, dists)
+        rounds = self._store.load_rounds(ctx.session_id, entry.id)
+        answered_choice = any(
+            r.get("question", {}).get("question_type") == "choice" and r.get("answer") is not None
+            for r in rounds
+        )
+        # 未作答过的 choice 走缓存（幂等刷新）；已作答（无论对错）一律重新生成
+        # ——原题重考测不出新理解，重教后必须换题
+        cached: ChoiceQuestionOutput | None = (
+            self._choice_q_cache.get(entry.id) if not answered_choice else None
+        )
+        if cached is None:
+            try:
+                cached = await choice_node(
+                    {
+                        "entry": {
+                            "id": entry.id,
+                            "title": entry.title,
+                            "content": entry.content,
+                            "keywords": entry.keywords,
+                        },
+                        "taught_claims": self._all_taught_claims(ctx.session_id, entry.id),
+                        "difficulty_level": ctx.difficulty_level,
+                        "previous_questions": [
+                            q
+                            for q in progress.previous_questions
+                            if "哪组要点" not in q  # 旧版关键词归属题不算重考素材
+                        ],
+                    },
+                    provider=self._provider,
+                    model=self._settings.question_model,
+                )
+            except Exception:
+                logger.warning("choice_llm_failed_fallback_deterministic", entry_id=entry.id)
+                cached = None
+            self._choice_q_cache[entry.id] = cached
+        if cached is None:
+            return fallback
 
-    @staticmethod
-    def _apply_choice_distractors(question: Question, dists: list[str] | tuple[str, ...]) -> Question:
-        if not question.options:
-            return question
-        correct_text = question.options[0].split(". ", 1)[-1]
-        texts = [correct_text, *dists][:4]
-        options = tuple(f"{label}. {t}" for label, t in zip("ABCD", texts, strict=False))
-        return dataclasses.replace(question, options=options, expected_label="A")
+        texts = [cached.correct, *cached.distractors][:4]
+        order = list(range(len(texts)))
+        random.shuffle(order)
+        labels = "ABCD"
+        options = tuple(f"{labels[i]}. {texts[order[i]]}" for i in range(len(texts)))
+        expected_label = labels[order.index(0)]
+        return dataclasses.replace(
+            fallback,
+            prompt=cached.question,
+            options=options,
+            expected_label=expected_label,
+        )
 
     async def _build_scaffold(
         self, ctx: SessionContext, entry: KnowledgeEntry, failed: dict[str, str]
@@ -597,7 +628,7 @@ class TeachLoop:
         正确项固定 A 位（教学对比工具，非测评，不需要位置随机化）。
         LLM 失败/校验不过回退确定性构造（题干与关键词堆语义对齐）。
         """
-        claims = self._last_taught_claims(ctx.session_id, entry.id)
+        claims = self._all_taught_claims(ctx.session_id, entry.id)
         entry_dict = {
             "id": entry.id,
             "title": entry.title,
@@ -653,18 +684,26 @@ class TeachLoop:
             expected_label="A",
         )
 
-    def _last_taught_claims(self, session_id: str, entry_id: str) -> list[dict[str, Any]]:
-        """深度契约输入：该条目最近一次教学的论断（带 claim_type，D2 可重建）。
+    def _all_taught_claims(self, session_id: str, entry_id: str) -> list[dict[str, Any]]:
+        """深度契约输入：该条目**全部轮次**教学论断的累积（带 claim_type，D2 可重建）。
 
-        claim_type 进上下文供出题分层：失败后 extension 论断禁止入题。
+        深度契约语义是"已教过即可考"——只取最近一轮会浪费此前轮次的教学素材，
+        且防重考（previous_questions）已阻止旧角度重问。按文本去重（极端情况
+        审核回流后重写论断与旧轮撞文本时保留首现）。
         """
-        for event in reversed(self._store.load_events(session_id, limit=500)):
-            if event.event_type == "teach_delivered" and event.payload.get("entry_id") == entry_id:
-                return [
-                    {"text": c["text"], "claim_type": c.get("claim_type", "core")}
-                    for c in event.payload.get("claims", [])
-                ]
-        return []
+        seen: set[str] = set()
+        claims: list[dict[str, Any]] = []
+        for event in self._store.load_events(session_id, limit=500):
+            if event.event_type != "teach_delivered":
+                continue
+            if event.payload.get("entry_id") != entry_id:
+                continue
+            for c in event.payload.get("claims", []):
+                if c["text"] in seen:
+                    continue
+                seen.add(c["text"])
+                claims.append({"text": c["text"], "claim_type": c.get("claim_type", "core")})
+        return claims
 
     def _taught_previously(self, session_id: str, entry_id: str) -> list[str]:
         """重教去重输入：该条目此前**所有**轮次的已教论断文本（时间正序）。"""
@@ -765,8 +804,11 @@ class TeachLoop:
         )
 
     async def _deliver_package(self, ctx: SessionContext, entry: KnowledgeEntry, mastery: float) -> None:
-        """资源沉淀（PRD FR-11~15）：三形态 + 溯源 + 进阶标记。"""
-        claims, reviews = self._last_teach_with_verdicts(ctx.session_id, entry.id)
+        """资源沉淀（PRD FR-11~15）：三形态 + 溯源 + 进阶标记。
+
+        讲义输入为该条目全部轮次的论断累积（各轮互补，只取最后一轮会丢内容）。
+        """
+        claims, reviews, round_by_index = self._all_teach_with_verdicts(ctx.session_id, entry.id)
         rounds = self._store.load_rounds(ctx.session_id, entry.id)
         practice = extract_practice(claims, reviews, knowledge_type=entry.knowledge_type)
         challenge = build_challenge(entry.title, mastery=mastery)
@@ -775,7 +817,7 @@ class TeachLoop:
             ctx.session_id,
             ctx.learner_id,
             entry.id,
-            lecture=build_lecture(claims, reviews, round_no=max((r["round_no"] for r in rounds), default=1)),
+            lecture=build_lecture(claims, reviews, round_by_index=round_by_index),
             questions=archive_questions(rounds),
             practice=practice,
             challenge=challenge,
@@ -794,31 +836,57 @@ class TeachLoop:
             },
         )
 
-    def _last_teach_with_verdicts(
+    def _all_teach_with_verdicts(
         self, session_id: str, entry_id: str
-    ) -> tuple[list[DraftClaim], list[ReviewNote]]:
-        """从最近一次 teach_delivered 事件重建 claims + 裁决（讲义组装输入）。"""
-        for event in reversed(self._store.load_events(session_id, limit=500)):
-            if event.event_type == "teach_delivered" and event.payload.get("entry_id") == entry_id:
-                claims = [
+    ) -> tuple[list[DraftClaim], list[ReviewNote], dict[int, int]]:
+        """该条目**全部** teach_delivered 事件的论断 + 裁决累积（讲义组装输入）。
+
+        - claim_index 是事件内局部编号——跨事件合并必须全局重编号，verdicts
+          同步 base 偏移（错位会让裁决落空，fail-closed 全记 unsupported 的
+          旧坑，见 evals/run.py 同源处理）；
+        - 按文本去重：审核回流重写后的论断与旧轮撞文本时保留首现（含裁决）；
+        - round_by_index 记录每条论断的来源轮次（讲义"round"字段）。
+        """
+        claims: list[DraftClaim] = []
+        notes: list[ReviewNote] = []
+        round_by_index: dict[int, int] = {}
+        seen_texts: set[str] = set()
+        for event in self._store.load_events(session_id, limit=500):
+            if event.event_type != "teach_delivered":
+                continue
+            if event.payload.get("entry_id") != entry_id:
+                continue
+            round_no = int(event.payload.get("round_no", 1))
+            base = len(claims)
+            # 局部 claim_index → 全局 claim_index（被去重丢弃的论断不进映射）
+            index_map: dict[int, int] = {}
+            for c in event.payload.get("claims", []):
+                if c["text"] in seen_texts:
+                    continue
+                seen_texts.add(c["text"])
+                global_index = base + len(index_map)
+                index_map[int(c["claim_index"])] = global_index
+                claims.append(
                     DraftClaim(
-                        claim_index=c["claim_index"],
+                        claim_index=global_index,
                         text=c["text"],
                         evidence_ids=c["evidence_ids"],
                         claim_type=c.get("claim_type", "core"),
                     )
-                    for c in event.payload.get("claims", [])
-                ]
-                notes = [
+                )
+                round_by_index[global_index] = round_no
+            for idx, verdict in event.payload.get("verdicts", {}).items():
+                global_index = index_map.get(int(idx))
+                if global_index is None:
+                    continue
+                notes.append(
                     ReviewNote(
-                        claim_index=int(idx),
+                        claim_index=global_index,
                         verdict=verdict,  # type: ignore[arg-type]
                         reason="来自 teach_delivered 事件",
                     )
-                    for idx, verdict in event.payload.get("verdicts", {}).items()
-                ]
-                return claims, notes
-        return [], []
+                )
+        return claims, notes, round_by_index
 
     # ---------- 进度推导 ----------
 

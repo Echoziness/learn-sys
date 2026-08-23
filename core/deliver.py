@@ -39,9 +39,14 @@ def build_lecture(
     claims: list[DraftClaim],
     reviews: list[ReviewNote],
     *,
-    round_no: int,
+    round_no: int = 1,
+    round_by_index: dict[int, int] | None = None,
 ) -> list[dict[str, Any]]:
-    """讲义 = 审核通过（supported）的论断，保留溯源链与分层标记。"""
+    """讲义 = 审核通过（supported）的论断，保留溯源链与分层标记。
+
+    输入应为该条目**全部轮次**的论断累积（taught_previously 保证各轮互补，
+    只取最后一轮会丢内容——实测踩坑）；round_by_index 记录各论断的来源轮次。
+    """
     verdicts: dict[int, str] = {}
     rank = {"unsupported": 0, "partially_supported": 1, "supported": 2}
     for note in reviews:
@@ -57,7 +62,7 @@ def build_lecture(
                 "text": claim.text,
                 "evidence_ids": claim.evidence_ids,
                 "claim_type": claim.claim_type,
-                "round": round_no,
+                "round": (round_by_index or {}).get(claim.claim_index, round_no),
             }
         )
     return lecture

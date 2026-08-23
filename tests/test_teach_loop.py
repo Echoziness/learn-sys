@@ -14,7 +14,7 @@ from scripts.init_db import SCHEMA
 
 from core.agents.diagnose import DiagnoseOutput
 from core.agents.feedback import FeedbackOutput
-from core.agents.question import DistractorOutput, QuestionOutput, ScaffoldOutput
+from core.agents.question import ChoiceQuestionOutput, QuestionOutput, ScaffoldOutput
 from core.config import Settings
 from core.plan import KnowledgeEntry
 from core.session import SessionStore
@@ -31,6 +31,7 @@ class FakeProvider:
         self._feedbacks = feedbacks or []
         self.calls: list[str] = []
         self.prompts: list[str] = []  # 记录 prompt 文本（上下文契约断言用）
+        self._choice_calls = 0
 
     async def chat_validated(self, messages, schema, model=None, **kwargs):
         name = schema.__name__
@@ -50,8 +51,19 @@ class FakeProvider:
                 correct="甲是 E1 的核心概念，乙是配套",
                 distractors=["镜像错误理解", "无关干扰项"],
             )
-        if name == "DistractorOutput":
-            return DistractorOutput(distractors=["混淆一、混淆二", "混淆三、混淆四", "混淆五、混淆六"])
+        if name == "ChoiceQuestionOutput":
+            # 每次生成不同题干（测"已作答后重新生成"时断言两题不同）
+            self._choice_calls += 1
+            n = self._choice_calls
+            return ChoiceQuestionOutput(
+                question=f"关于主题一的理解（第{n}次出题），下列说法正确的是？",
+                correct="论断一描述的内容是本主题的核心",
+                distractors=[
+                    "论断一描述的内容与本主题无关",
+                    "主题一的核心内容在考试中不要求掌握",
+                    "论断一在本主题中不起任何作用",
+                ],
+            )
         if name == "FeedbackOutput":
             assert self._feedbacks, "feedback 响应队列耗尽"
             return self._feedbacks.pop(0)
@@ -354,9 +366,16 @@ def test_previous_questions_collected(tmp_path):
     assert loop.progress(sid, "E1").previous_questions == ["第一题", "第二题", "第三题"]
 
 
-def test_choice_distractors_cached_per_entry(tmp_path):
-    """choice 干扰项按 entry 缓存：同条目第二次出 choice 不再调 LLM。"""
-    feedbacks = [FeedbackOutput(verdict="incorrect", evaluation="choice 错", missed_requirements=[])]
+def test_choice_question_cached_and_regenerated(tmp_path):
+    """choice 概念题缓存语义：未作答走缓存（幂等刷新）；已作答后重新生成。
+
+    旧语义（干扰项按 entry 缓存，原题重考）的问题：答错重教后再考原题
+    测不出新理解。新语义下已作答的 choice 一律换题。
+    """
+    feedbacks = [
+        FeedbackOutput(verdict="incorrect", evaluation="choice 错", missed_requirements=[]),
+        FeedbackOutput(verdict="incorrect", evaluation="choice 又错", missed_requirements=[]),
+    ]
     loop, store = _setup(tmp_path, feedbacks=feedbacks)
     provider = loop._provider
     assert isinstance(provider, FakeProvider)
@@ -364,14 +383,21 @@ def test_choice_distractors_cached_per_entry(tmp_path):
     asyncio.run(loop.teach_round(ctx, "E1"))
     q1 = asyncio.run(loop.next_question(ctx, "E1"))
     assert q1.question_type == "choice"
-    assert q1.options[0].startswith("A. ")  # 正确项仍 A 位
-    asyncio.run(loop.handle_answer(ctx, "E1", q1, "Z"))  # 错 → mastery 0
-    assert provider.calls.count("DistractorOutput") == 1
+    # 概念辨析题：不再是"哪组要点属于X"关键词归属题
+    assert "哪组要点" not in q1.prompt
+    # 正确项随机落位，但 expected_label 指向的选项必须是判分认定的正确项
+    assert q1.expected_label in "ABCD"
+    assert provider.calls.count("ChoiceQuestionOutput") == 1
 
-    asyncio.run(loop.teach_round(ctx, "E1"))
+    asyncio.run(loop.next_question(ctx, "E1"))  # pending 轮幂等复用，不追加 LLM 调用
+    assert provider.calls.count("ChoiceQuestionOutput") == 1
+
+    asyncio.run(loop.handle_answer(ctx, "E1", q1, "Z"))  # 错 → mastery 0
+    asyncio.run(loop.teach_round(ctx, "E1"))  # 重教
     q2 = asyncio.run(loop.next_question(ctx, "E1"))
     assert q2.question_type == "choice"
-    assert provider.calls.count("DistractorOutput") == 1  # 缓存命中
+    assert provider.calls.count("ChoiceQuestionOutput") == 2  # 已作答 → 重新生成
+    assert q2.prompt != q1.prompt  # 不原题重考
 
 
 def test_retry_round_injects_taught_previously(tmp_path):
