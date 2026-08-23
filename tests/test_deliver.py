@@ -9,6 +9,7 @@ from core.deliver import (
     difficulty_tier_for,
     extract_practice,
     is_tier_matched,
+    package_to_entry,
 )
 from core.state import DraftClaim, ReviewNote
 
@@ -99,3 +100,73 @@ def test_difficulty_tier():
     assert is_tier_matched("beginner") and not is_tier_matched("capped:beginner")
     assert difficulty_tier_for("intermediate", 3) == "intermediate"
     assert difficulty_tier_for("advanced", 5) == "advanced"
+
+
+# ---------- package_to_entry：资源包 → 知识库条目（同构导出） ----------
+
+
+class _Entry:
+    id = "BDA-SQL-001"
+    title = "SELECT 基础查询"
+    knowledge_type = "procedure"
+    difficulty = 2
+    prerequisites = ["BDA-DB-001"]
+    keywords = ["SQL", "SELECT", "FROM", "查询"]
+    source = "ISO/IEC 9075"
+
+
+def _pkg(lecture: list[dict]) -> dict:
+    return {"entry_id": "BDA-SQL-001", "lecture": lecture}
+
+
+def test_package_to_entry_basic_and_inherit():
+    pkg = _pkg([
+        {"text": "SELECT 语句用于从数据库检索数据，配合 FROM 构成查询。", "evidence_ids": ["BDA-SQL-001"]},
+        {"text": "使用 DISTINCT 去除查询结果中的重复行。", "evidence_ids": ["BDA-SQL-001"]},
+    ])
+    item = package_to_entry(
+        pkg, _Entry, learner_id="p01", difficulty_level="beginner", claims_total=3
+    )
+    assert item is not None
+    assert item["id"] == "GEN-BDA-SQL-001-p01"
+    assert item["title"] == "SELECT 基础查询（零基础适配版）"
+    assert "SELECT 语句" in item["content"] and "DISTINCT" in item["content"]
+    # 继承源条目的依赖/难度/类型
+    assert item["prerequisites"] == ["BDA-DB-001"]
+    assert item["difficulty"] == 2
+    assert item["knowledge_type"] == "procedure"
+    # keywords 过滤到 content 实际命中的（"查询"/"SQL"? SQL 不在 content 字符里）
+    assert "SELECT" in item["keywords"] and "查询" in item["keywords"]
+    assert "FROM" in item["keywords"]
+    # 溯源链改写：生成来源 + 审核通过率
+    assert "生成自 BDA-SQL-001" in item["source"] and "2/3" in item["source"]
+
+
+def test_package_to_entry_empty_lecture_returns_none():
+    assert (
+        package_to_entry(_pkg([]), _Entry, learner_id="p01", difficulty_level="beginner", claims_total=0)
+        is None
+    )
+
+
+def test_package_to_entry_pitfalls_appended():
+    pkg = _pkg([{"text": "SELECT 配合 FROM 检索表数据。", "evidence_ids": ["BDA-SQL-001"]}])
+    item = package_to_entry(
+        pkg, _Entry, learner_id="p01", difficulty_level="intermediate",
+        claims_total=1, pitfalls=["常见误区：认为 SELECT 会修改表数据；正确理解是只读。"],
+    )
+    assert item is not None
+    assert "常见误区" in item["content"] and "只读" in item["content"]
+    assert "进阶适配版" in item["title"]
+
+
+def test_package_to_entry_pitfall_prefix_dedup():
+    """LLM 提炼物自带"常见误区："前缀时不得重复拼接。"""
+    pkg = _pkg([{"text": "SELECT 配合 FROM 检索表数据。", "evidence_ids": ["BDA-SQL-001"]}])
+    item = package_to_entry(
+        pkg, _Entry, learner_id="p01", difficulty_level="beginner",
+        claims_total=1,
+        pitfalls=["常见误区：认为 SELECT 会修改数据；正确理解是只读。"],
+    )
+    assert item is not None
+    assert item["content"].count("常见误区") == 1

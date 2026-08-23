@@ -29,7 +29,8 @@ learn-sys/
 │   │   ├── generate.py      # 领域知识生成（anchor 主条目/背景条目分离）
 │   │   ├── review.py        # 审核裁判（rule_check/merge_verdicts 为纯函数，可单测）
 │   │   ├── feedback.py      # LLM 判分复核 + 教学评估（fail-closed 回退规则）
-│   │   └── question.py        # 回答题题干+判分要点生成（场景化提问；expected 服务端校验字符出自 content，按 entry_id 缓存）
+│   │   ├── question.py        # 回答题题干+判分要点生成（场景化提问；expected 服务端校验字符出自 content，按 entry_id 缓存）
+│   │   └── distill.py         # 误区提炼（错题/脚手架原料 → 知识化误区表述；无素材短路不调 LLM）
 │   ├── state.py             # AgentState + 全部 agent 间消息的 Pydantic 模型
 │   ├── graph.py             # build_teach_graph 教学子图（retrieve→generate→review）依赖注入装配
 │   ├── mastery.py           # 掌握度数学唯一事实源（纯函数：加权+置信度封顶+门槛+降维判定）
@@ -52,6 +53,7 @@ learn-sys/
 ├── scripts/                 # 组合根
 │   ├── cli_input.py         # CLI 交互输入层（readline 行编辑 + 输入边界净化；刻意轻量，主战场在 Web）
 │   ├── init_db.py           # 幂等知识库 loader + 会话表迁移（数据来自 data/seeds/，不内嵌数据）
+│   ├── export_packages.py     # 资源包条目化导出（产出物 → entries.jsonl 同构条目，自检后可被 init_db 原样入库）
 │   └── run_cli.py           # 会话 CLI（薄壳，调 core/teach_loop）
 ├── data/
 │   ├── seeds/<domain>/entries.jsonl  # 知识条目（一等数据文件，换目录即换领域；每条必带 knowledge_type）
@@ -120,6 +122,7 @@ diagnose（LLM 一次，输出 gap_ids）→ plan（确定性切片：ID 投影 
 | question（LLM 节点） | 条目（id/title/content/keywords）+ taught_claims（带 claim_type）+ retry 信号（失败降维）+ difficulty_level + previous_questions（防重考） | 题干 + expected（服务端校验字符出自 content ∪ 题干） |
 | answer_pipeline（服务函数） | 题目、作答、掌握度历史 | AnswerOutcome（判分/评估/决策/遗漏清单，CLI 与 Web 共用） |
 | deliver（纯函数，W1 已上线） | draft + review_history（或 teach_delivered 事件）、教学轮历史、knowledge_type、mastery | 讲义（仅 supported）/ 分阶题归档 / 实操指南 / 进阶挑战 / 难度层级 |
+| distill（LLM，导出期调用，2026-08-23） | 错答记录 + 脚手架干扰项 + 条目（导出脚本收集自 topic_rounds） | 0-2 条误区知识（bigram 同域校验；无素材短路返回空，不调 LLM） |
 
 每个节点只读写表内 key，越界即 code review 驳回。隔离红线：review 禁止任何画像字段（含 `profile_summary`）；generate 只读 `profile_summary` 摘要，禁止 `learner_profile` 原始模型；对话日志永不进生成上下文。
 
@@ -150,6 +153,8 @@ diagnose（LLM 一次，输出 gap_ids）→ plan（确定性切片：ID 投影 
 - 知识条目必带 `knowledge_type`（`memory` 事实/定义/术语 / `concept` 概念与关系 / `procedure` 步骤技能，枚举在 `scripts/init_db.py.KnowledgeType`，DB 列 DEFAULT 'concept'），描述知识本体（影响教学方式/门槛/复习节奏），不绑定题型，core/plan.KnowledgeEntry 同持此字段（默认 concept）；
 - 新增种子条目 content 控制在 50-100 字（代码片段算字符），且每个关键词去空格后的全部字符必须出现在 content 里（判分靠子串，`tests/test_seeds.py` 全量校验）；
 - DB schema 变更禁止删库重建：`scripts/init_db.py` 用幂等迁移（PRAGMA table_info 查列 → 缺则 `ALTER TABLE ADD COLUMN`），保留运行时数据与 rowid 对齐（FTS/vec 外部表依赖）。
+- **产出物可复用（2026-08-23 拍板）**：资源包经 `scripts/export_packages.py` 条目化导出为与知识库**同构**的 entries.jsonl（SeedEntry schema），可被 init_db 原样入库——"系统生产的资源喂回系统"的硬证明。进库的是知识本身：讲义 supported 论断直接拼接 + distill agent 从错题/脚手架原料提炼的误区知识段落；**题目和脚手架本身不进库**（它们是提炼原料不是知识）。keywords 过滤到 content 实际命中字符（天然过种子校验）；id 规范 `GEN-{entry_id}-{learner_id}`；prerequisites/difficulty/knowledge_type 继承源条目；source 改写为生成溯源链（含审核通过率 n/m）。导出自检：schema 校验 + keywords 字符子集 + id 唯一，失败非零退出；
+- **审核价值数字已在事件流里**（2026-08-23 确认）：打回重写回路天然产生对照组——`review_done` 事件的 review_round=1 裁决 = 无回路时的裸幻觉率口径，teach_delivered 最终裁决 = 有回路的交付质量。收盘时评测脚本聚合两层即可出"审核机制挽救了多少幻觉"的消融对照，**无需做消融开关**；
 
 ### 3.7 会话层（W1 已上线）
 
@@ -236,6 +241,7 @@ uv run pyright core/ scripts/ tests/ api/        # Python 类型检查
 uv run ruff check .                              # Python lint（E/F/W/I/UP/B/SIM）
 cd web && pnpm typecheck && pnpm lint            # 前端类型检查
 uv run python scripts/init_db.py                 # 初始化知识库 + 会话表（幂等）
+uv run python scripts/export_packages.py         # 资源包条目化导出（产出物 → 同构 entries.jsonl，可被 init_db 原样入库）
 uv run python evals/run.py --limit 5            # 评测小批（先验幻觉率，超标即调）
 uv run python evals/run.py                       # 评测全量 50 组（并发 5，~30 分钟）
 docker compose up --build                        # 交付启动

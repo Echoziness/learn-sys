@@ -5,10 +5,17 @@
 - 定制化讲义 lecture：通过审核的论断（带 evidence 溯源链）；
 - 分阶测试题 questions：choice / scaffold / answer 三阶归档；
 - 实操指南 practice：procedure 条目的步骤化指南（来自 generate 的 procedure 段）。
+
+条目化导出（2026-08-23 拍板）：产出物可复用是赛题硬要求。复用形态 =
+package_to_entry 把资源包提炼为与知识库 entries.jsonl 完全同构的条目
+（导出物可被 init_db 原样入库——同规范的硬证明）。进库的是知识本身：
+讲义论断已是审核过的知识文本；错题/脚手架只是 distill agent 的提炼
+原料，其产物（误区知识）以"常见误区"段落进入 content。
 """
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from core.state import DraftClaim, ReviewNote
@@ -148,6 +155,62 @@ def build_challenge(
     }
 
 
+# 诊断层级的中文标注（导出条目标题用）
+_LEVEL_LABEL = {"beginner": "零基础", "intermediate": "进阶", "advanced": "高级"}
+
+
+def package_to_entry(
+    pkg: dict[str, Any],
+    source_entry: Any,
+    *,
+    learner_id: str,
+    difficulty_level: str,
+    claims_total: int,
+    pitfalls: list[str] | None = None,
+) -> dict[str, Any] | None:
+    """资源包 → 知识库条目（entries.jsonl 同构，SeedEntry 可直接校验入库）。
+
+    - content = 讲义 supported 论断按教学弧顺序拼接（procedure_guide 步骤
+      也经 build_lecture 收入 lecture，天然在内容里）+ 可选"常见误区"段
+      （distill 提炼物，原料本身不进库）；
+    - keywords 过滤到 content 实际命中的（判分/种子校验同语义：字符子集），
+      保证导出条目天然通过"关键词字符 ⊆ content"校验；
+    - prerequisites / difficulty / knowledge_type 继承源条目（知识依赖不变）；
+    - source 改写为生成溯源链：由哪条权威条目生成、审核通过率。
+    讲义为空返回 None（无知识可复用的包不导出）。
+    """
+    lecture = [c for c in (pkg.get("lecture") or []) if isinstance(c, dict) and c.get("text")]
+    if not lecture:
+        return None
+    body = "\n\n".join(c["text"] for c in lecture)
+    pit_list = [p for p in (pitfalls or []) if p]
+    if pit_list:
+        # 提炼物可能自带"常见误区："前缀（LLM 照抄模板）——去重后统一加一次
+        stripped = [re.sub(r"^(常见误区[:：]\s*)+", "", p).rstrip("。") for p in pit_list]
+        body += "\n\n常见误区：" + "；".join(stripped) + "。"
+
+    content_chars = set(re.sub(r"\s+", "", body.lower()))
+    keywords = [
+        kw
+        for kw in getattr(source_entry, "keywords", [])
+        if set(re.sub(r"\s+", "", kw.lower())) <= content_chars
+    ]
+    label = _LEVEL_LABEL.get(difficulty_level, difficulty_level)
+    return {
+        "id": f"GEN-{source_entry.id}-{learner_id}",
+        "knowledge_type": getattr(source_entry, "knowledge_type", "concept"),
+        "title": f"{source_entry.title}（{label}适配版）",
+        "content": body,
+        "prerequisites": list(getattr(source_entry, "prerequisites", [])),
+        "difficulty": getattr(source_entry, "difficulty", 1),
+        "keywords": keywords,
+        "source": (
+            f"生成自 {source_entry.id}（{getattr(source_entry, 'source', '')}）；"
+            f"审核通过 {len(lecture)}/{claims_total} 论断"
+        ),
+    }
+
+
 __all__ = [
     "CHALLENGE_MASTERY_GATE",
     "archive_questions",
@@ -156,4 +219,5 @@ __all__ = [
     "difficulty_tier_for",
     "extract_practice",
     "is_tier_matched",
+    "package_to_entry",
 ]
