@@ -10,13 +10,14 @@
 教学内核（诊断/检索/生成/审核/出题/判分/决策/脚手架）  ███████████ 完成，冻结打磨
 会话持久化 + 资源沉淀层 + API                          ███████████ W1 完成
 Web 三画面（学生面 / 裁判面 / 报告）+ 回放              ███████████ W2 完成
-评测（三指标 + 50 组画像 + 批量脚本）                   █████████░ 口径与小批已验，全量批跑待 W3 归档
-交付（compose / 视频 / 提交包）                         ░░░░░░░░░░░ W3
+评测（三指标 + 50 组画像 + 批量脚本）                   █████████░ 口径已验，全量批跑收盘归档
+产出物条目化导出（资源包 → 知识库同构，可复用闭环）       ███████████ 完成
+交付（compose 复验 / 视频 / 提交包）                     ░░░░░░░░░░░ 收盘
 ```
 
-测试基线：pytest 176 通过 · pyright 0 errors · ruff 全绿 · web typecheck/lint/build 全绿 · 真实 LLM E2E 闭环全通。
+测试基线：pytest 193 通过 · pyright 0 errors · ruff 全绿 · web typecheck/lint/build 全绿。
 
-小批评测实测（2 组，`v0.3.0`）：幻觉率 0.94%（目标 <5%）· 画像-资源适配率 88.9%（≥85%）· 知识点覆盖率 87.2%（全量批跑再判定）。
+评测状态：三指标口径已落地（`evals/metrics.py` 与赛题一一对应）；教学弧 prompt 收敛后单会话验证幻觉率 3.8%（<5%）、知识点覆盖率 98.4%（≥90%）；全量 50 组批跑在系统冻结后一次归档。
 
 ## 快速开始
 
@@ -45,6 +46,9 @@ cd web && pnpm typecheck && pnpm lint
 # 批量评测（三指标 JSON 报告）
 uv run python evals/run.py --limit 5    # 小批先验幻觉率
 uv run python evals/run.py              # 全量 50 组（并发 5，断点续跑）
+
+# 产出物复用：资源包 → 知识库同构条目（可被 init_db 原样入库）
+uv run python scripts/export_packages.py    # 默认最新已完成会话
 
 # 交付
 docker compose up --build
