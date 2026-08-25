@@ -103,6 +103,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(session_routes.router)
+    app.include_router(session_routes.resources_router)
     return app
 
 

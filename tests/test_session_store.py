@@ -19,6 +19,11 @@ def make_store(tmp_path: Path) -> SessionStore:
     return SessionStore(str(tmp_path / "test.db"))
 
 
+def _seed_entry(gen_id: str, source_id: str) -> dict[str, str]:
+    """最小导出条目（仅测存储层，不追求 SeedEntry 完整字段）。"""
+    return {"id": gen_id, "source_entry_id": source_id, "title": "t", "content": "c"}
+
+
 def test_session_lifecycle(tmp_path):
     store = make_store(tmp_path)
     sid = store.create_session("test1", {"background": {"education": "本科"}})
@@ -148,6 +153,97 @@ def test_package_practice_kept_on_merge(tmp_path):
     p = store.load_packages(sid)[0]
     assert p["practice"] == {"steps": ["步骤1"]}
     assert len(p["lecture"]) == 1
+
+
+def test_export_entries_roundtrip_and_overwrite(tmp_path):
+    """条目化导出产物落库：同构字段往返 + 重导出覆盖同 id 条目。"""
+    store = make_store(tmp_path)
+    sid = store.create_session("p01", {})
+    entry = {
+        "id": "GEN-E1-p01",
+        "source_entry_id": "E1",
+        "knowledge_type": "concept",
+        "title": "测试条目（进阶适配版）",
+        "content": "内容正文。",
+        "prerequisites": ["E0"],
+        "difficulty": 2,
+        "keywords": ["内容"],
+        "source": "生成自 E1；审核通过 2/3 论断",
+    }
+    store.save_export_entries(sid, [entry])
+    loaded = store.load_export_entries(sid)
+    assert len(loaded) == 1
+    assert loaded[0] == {**entry, "exported_at": loaded[0]["exported_at"]}
+    assert "source_entry_id" in loaded[0] and loaded[0]["exported_at"]
+
+    # 重导出同 id：覆盖而非追加，且 source_entry_id 不可丢进 entry_json 同构体之外破坏字段集
+    store.save_export_entries(sid, [{**entry, "content": "重写后的正文。", "source_entry_id": "E2"}])
+    loaded = store.load_export_entries(sid)
+    assert len(loaded) == 1
+    assert loaded[0]["content"] == "重写后的正文。"
+    assert loaded[0]["source_entry_id"] == "E2"
+
+
+def test_delete_session_keep_flags(tmp_path):
+    """删除会话：过程数据必删；资源包/导出条目可选保留为孤儿行（溯源字段仍在行内）。"""
+    store = make_store(tmp_path)
+    sid = store.create_session("test1", {})
+    asyncio.run(store.emit(sid, "session_start", {}))
+    store.save_round(
+        sid, entry_id="E1", round_no=1,
+        question={"prompt": "题干"}, expected=["主键"], answer="主键",
+        grade={"verdict": "correct"}, decision="advance", mastery_after=0.8,
+    )
+    store.save_mastery(sid, "test1", "E1", 1, correctness=True, mastery_after=0.8)
+    store.upsert_package(sid, "test1", "E1", lecture=[{"text": "论断"}], difficulty_tier="beginner")
+    store.save_export_entries(sid, [_seed_entry("GEN-E1-test1", "E1")])
+
+    deleted = store.delete_session(sid, keep_packages=True, keep_exports=True)
+    assert deleted == {"events": 1, "rounds": 1, "snapshots": 1}
+    assert store.get_session(sid) is None
+    assert store.load_events(sid) == []
+    # 保留的产物成孤儿行：session_status/learner_id 为 None，条目本体完整
+    pkgs = store.load_all_packages()
+    assert len(pkgs) == 1
+    assert pkgs[0]["session_status"] is None and pkgs[0]["learner_id"] == "test1"
+    exports = store.load_all_export_entries()
+    assert len(exports) == 1
+    assert exports[0]["session_status"] is None and exports[0]["id"] == "GEN-E1-test1"
+
+    # 全删模式：产物一并清除，各表行数如实回报
+    sid2 = store.create_session("test2", {})
+    store.upsert_package(sid2, "test2", "E2", lecture=[{"text": "论断"}], difficulty_tier="beginner")
+    store.save_export_entries(sid2, [_seed_entry("GEN-E2-test2", "E2")])
+    deleted2 = store.delete_session(sid2)
+    assert deleted2["packages"] == 1 and deleted2["exports"] == 1
+    assert [p["entry_id"] for p in store.load_all_packages()] == ["E1"]
+    assert [e["id"] for e in store.load_all_export_entries()] == ["GEN-E1-test1"]
+
+
+def test_load_all_packages_and_exports_with_filters(tmp_path):
+    """跨会话聚合：无参全量，可按来源会话/条目筛选（导出侧源条目与生成条目都命中）。"""
+    store = make_store(tmp_path)
+    sa = store.create_session("alpha", {})
+    sb = store.create_session("beta", {})
+    store.upsert_package(sa, "alpha", "E1", lecture=[{"text": "a"}], difficulty_tier="beginner")
+    store.upsert_package(sb, "beta", "E2", lecture=[{"text": "b"}], difficulty_tier="advanced")
+    store.save_export_entries(sa, [_seed_entry("GEN-E1-alpha", "E1")])
+    store.save_export_entries(sb, [_seed_entry("GEN-E2-beta", "E2")])
+
+    assert len(store.load_all_packages()) == 2
+    by_session = store.load_all_packages(session_id=sa)
+    assert [p["entry_id"] for p in by_session] == ["E1"]
+    assert by_session[0]["session_status"] == "active"
+    assert [p["entry_id"] for p in store.load_all_packages(entry_id="E2")] == ["E2"]
+
+    assert len(store.load_all_export_entries()) == 2
+    assert [e["id"] for e in store.load_all_export_entries(session_id=sb)] == ["GEN-E2-beta"]
+    # 筛选既命中源条目也命中生成条目（两种引用方式都常见）
+    assert [e["id"] for e in store.load_all_export_entries(entry_id="E1")] == ["GEN-E1-alpha"]
+    assert [e["id"] for e in store.load_all_export_entries(entry_id="GEN-E2-beta")] == ["GEN-E2-beta"]
+    assert store.load_all_export_entries(entry_id="不存在") == []
+    # 未删会话的导出条目带来源会话信息（删除后转 None，见 keep_flags 用例）
+    assert store.load_all_export_entries(session_id=sa)[0]["learner_id"] == "alpha"
 
 
 def test_event_type_is_dataclass(tmp_path):

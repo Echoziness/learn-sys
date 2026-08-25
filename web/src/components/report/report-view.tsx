@@ -9,6 +9,7 @@ import {
   LineChart,
   PolarAngleAxis,
   PolarGrid,
+  PolarRadiusAxis,
   Radar,
   RadarChart,
   ResponsiveContainer,
@@ -19,12 +20,11 @@ import {
 
 import { api } from "@/lib/api";
 import { LevelBadge } from "@/components/shared/badges";
+import { ExportedEntryList, PackageBrowser } from "@/components/shared/resource-views";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { ReportResponse, ResourcePackage } from "@/lib/types";
+import type { ExportedEntry, ReportResponse, ResourcePackage } from "@/lib/types";
 
 /** 学习路径：水平步进 + regress 回退标注（视频分镜用） */
 function PathChart({ topics, regressions }: { topics: { entry_id: string; title: string; order: number; target: boolean }[]; regressions: { entry_id: string; prereq_id: string | null; reason: string }[] }) {
@@ -71,104 +71,18 @@ function PathChart({ topics, regressions }: { topics: { entry_id: string; title:
   );
 }
 
-function PackageBrowser({ packages }: { packages: ResourcePackage[] }) {
-  if (packages.length === 0) {
-    return <p className="p-6 text-center text-sm text-muted-foreground">暂无资源包（需完成主题教学后沉淀）</p>;
-  }
-  return (
-    <div className="space-y-4">
-      {packages.map((p) => (
-        <Card key={p.entry_id}>
-          <CardHeader className="pb-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <CardTitle className="font-mono text-sm">{p.entry_id}</CardTitle>
-              <Badge variant="outline" className="text-[10px]">层级 {p.difficulty_tier}</Badge>
-              {p.challenge && <Badge variant="secondary" className="bg-violet-100 text-[10px] text-violet-800">进阶挑战</Badge>}
-              {p.practice && <Badge variant="secondary" className="bg-cyan-100 text-[10px] text-cyan-800">实操指南</Badge>}
-            </div>
-          </CardHeader>
-          <CardContent>
-            <Tabs defaultValue="lecture">
-              <TabsList className="h-8">
-                <TabsTrigger value="lecture" className="text-xs">讲义（{p.lecture.length}）</TabsTrigger>
-                <TabsTrigger value="questions" className="text-xs">分阶题（{p.questions.length}）</TabsTrigger>
-                {p.practice && <TabsTrigger value="practice" className="text-xs">实操指南</TabsTrigger>}
-                {p.challenge && <TabsTrigger value="challenge" className="text-xs">进阶挑战</TabsTrigger>}
-              </TabsList>
-              <TabsContent value="lecture" className="space-y-2 pt-2">
-                {p.lecture.map((c, i) => (
-                  <div key={i} className="rounded-md border p-2 text-sm">
-                    <div className="mb-1 flex flex-wrap items-center gap-1">
-                      <Badge variant="outline" className="text-[9px] font-mono">{c.claim_type}</Badge>
-                      <span className="text-[10px] text-muted-foreground">第 {c.round} 轮</span>
-                      <span className="ml-auto flex gap-1">
-                        {c.evidence_ids.map((id) => (
-                          <Badge key={id} variant="outline" className="font-mono text-[9px]">{id}</Badge>
-                        ))}
-                      </span>
-                    </div>
-                    <p className="leading-relaxed">{c.text}</p>
-                  </div>
-                ))}
-              </TabsContent>
-              <TabsContent value="questions" className="space-y-2 pt-2">
-                {p.questions.map((q) => (
-                  <div key={q.question_id} className="rounded-md border p-2 text-sm">
-                    <div className="mb-1 flex items-center gap-2">
-                      <Badge variant="outline" className="text-[9px] font-mono">{q.type}</Badge>
-                      <span className="font-mono text-[10px] text-muted-foreground">{q.question_id}</span>
-                    </div>
-                    <p>{q.prompt}</p>
-                    {q.options && (
-                      <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
-                        {q.options.map((o) => (
-                          <li key={o}>{o}</li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                ))}
-              </TabsContent>
-              {p.practice && (
-                <TabsContent value="practice" className="space-y-2 pt-2 text-sm">
-                  <p className="font-medium">步骤</p>
-                  <ol className="list-inside list-decimal space-y-1 text-muted-foreground">
-                    {p.practice.steps.map((s, i) => (
-                      <li key={i}>{s}</li>
-                    ))}
-                  </ol>
-                  {p.practice.example && (
-                    <>
-                      <Separator />
-                      <pre className="overflow-x-auto rounded bg-muted p-2 font-mono text-xs">{p.practice.example}</pre>
-                    </>
-                  )}
-                  {p.practice.checkpoints && (
-                    <>
-                      <Separator />
-                      <p className="font-medium">检查点</p>
-                      <ul className="list-inside list-disc space-y-0.5 text-muted-foreground">
-                        {p.practice.checkpoints.map((c, i) => (
-                          <li key={i}>{c}</li>
-                        ))}
-                      </ul>
-                    </>
-                  )}
-                </TabsContent>
-              )}
-              {p.challenge && (
-                <TabsContent value="challenge" className="pt-2 text-sm">
-                  <p className="font-medium">{p.challenge.title}</p>
-                  {p.challenge.description && <p className="mt-1 text-muted-foreground">{p.challenge.description}</p>}
-                </TabsContent>
-              )}
-            </Tabs>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
-  );
+/** 掌握度门槛（数值事实源在 core/mastery.py，此处仅展示层常量保持一致） */
+const MASTERY_GATE = 0.7;
+
+/** 雷达图展示层映射：以门槛为视觉中点——原始 0~1 轴下 0.7 达标只占半径 70%，
+ * 视觉上显得"远未掌握"；压缩为 [0,0.7]→[0,0.5]、[0.7,1]→[0.5,1] 后达标值居中、
+ * 达标后差异按比例放大；Tooltip 仍展示原始掌握度。 */
+function visualMastery(mastery: number): number {
+  if (mastery <= MASTERY_GATE) return (mastery / MASTERY_GATE) * 0.5;
+  return 0.5 + ((mastery - MASTERY_GATE) / (1 - MASTERY_GATE)) * 0.5;
 }
+
+const MASTERY_GATE_VISUAL = visualMastery(MASTERY_GATE);
 
 export function ReportView({ sessionId }: { sessionId: string }) {
   const report = useQuery<ReportResponse, Error>({
@@ -179,13 +93,22 @@ export function ReportView({ sessionId }: { sessionId: string }) {
     queryKey: ["resources", sessionId],
     queryFn: () => api.resources(sessionId),
   });
+  const exported = useQuery<ExportedEntry[], Error>({
+    queryKey: ["exports", sessionId],
+    queryFn: () => api.exports(sessionId),
+  });
 
   if (report.isPending) return <Skeleton className="h-96 w-full" />;
   const r = report.data;
   if (report.isError || r === null || r === undefined) {
     return <p className="text-sm text-destructive">报告加载失败：{String(report.error?.message ?? "").slice(0, 200)}</p>;
   }
-  const radarData = r.radar.map((x) => ({ subject: x.title.slice(0, 8), mastery: x.mastery }));
+  const radarData = r.radar.map((x) => ({
+    subject: x.title.slice(0, 8),
+    mastery: visualMastery(x.mastery),
+    gate: MASTERY_GATE_VISUAL,
+    raw: x.mastery,
+  }));
   const tierRate = r.tier_match.total > 0 ? Math.round((r.tier_match.matched / r.tier_match.total) * 100) : 0;
 
   return (
@@ -204,7 +127,7 @@ export function ReportView({ sessionId }: { sessionId: string }) {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">知识盲区雷达</CardTitle>
-            <CardDescription className="text-xs">逐主题掌握度（门槛 0.7）</CardDescription>
+            <CardDescription className="text-xs">逐主题掌握度（门槛 0.7 为图中虚线参照，悬停看原值）</CardDescription>
           </CardHeader>
           <CardContent>
             {radarData.length >= 3 ? (
@@ -213,8 +136,17 @@ export function ReportView({ sessionId }: { sessionId: string }) {
                   <RadarChart data={radarData}>
                     <PolarGrid />
                     <PolarAngleAxis dataKey="subject" tick={{ fontSize: 10 }} />
-                    <Radar dataKey="mastery" stroke="#2563eb" fill="#2563eb" fillOpacity={0.35} />
-                    <Tooltip />
+                    {/* 显式半径域：防自动域把映射后的 0~1 值压缩到中心 */}
+                    <PolarRadiusAxis domain={[0, 1]} tick={false} axisLine={false} />
+                    <Radar name="gate" dataKey="gate" stroke="#94a3b8" fill="none" strokeDasharray="4 2" />
+                    <Radar name="mastery" dataKey="mastery" stroke="#2563eb" fill="#2563eb" fillOpacity={0.35} />
+                    <Tooltip
+                      formatter={(value, name, item) =>
+                        name === "mastery"
+                          ? [`${(item?.payload as { raw?: number })?.raw?.toFixed(2) ?? value}`, "掌握度"]
+                          : [`${MASTERY_GATE}`, "门槛"]
+                      }
+                    />
                   </RadarChart>
                 </ResponsiveContainer>
               </div>
@@ -235,7 +167,7 @@ export function ReportView({ sessionId }: { sessionId: string }) {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">难度匹配</CardTitle>
-            <CardDescription className="text-xs">资源层级与诊断层级匹配率（目标 ≥85%）</CardDescription>
+            <CardDescription className="text-xs">资源层级与诊断层级匹配率</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="mb-2 text-3xl font-bold tabular-nums">{tierRate}%</div>
@@ -276,6 +208,18 @@ export function ReportView({ sessionId }: { sessionId: string }) {
           <Skeleton className="h-40 w-full" />
         ) : resources.data ? (
           <PackageBrowser packages={resources.data} />
+        ) : null}
+      </div>
+
+      <div>
+        <h2 className="mb-1 text-lg font-semibold tracking-tight">知识库同构条目（可复用资源包）</h2>
+        <p className="mb-3 text-xs text-muted-foreground">
+          资源包经条目化导出的最终形态——与知识库 entries.jsonl 同构（含误区提炼），可被原样入库复用；上方讲义/分阶题是其生产中间产物。
+        </p>
+        {exported.isPending ? (
+          <Skeleton className="h-40 w-full" />
+        ) : exported.data ? (
+          <ExportedEntryList entries={exported.data} />
         ) : null}
       </div>
     </div>

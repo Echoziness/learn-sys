@@ -34,6 +34,9 @@ function Nav() {
           <Link href="/sessions" className="hover:text-foreground">
             历史会话
           </Link>
+          <Link href="/resources" className="hover:text-foreground">
+            资源库
+          </Link>
         </nav>
       </div>
     </header>

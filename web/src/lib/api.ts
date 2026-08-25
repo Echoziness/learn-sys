@@ -36,6 +36,10 @@ export function getJson<T>(path: string): Promise<T> {
   return request<T>(path);
 }
 
+export function deleteJson<T>(path: string): Promise<T> {
+  return request<T>(path, { method: "DELETE" });
+}
+
 export const api = {
   createSession: (payload: unknown) => postJson<import("@/lib/types").CreateSessionResponse>("/api/sessions", payload),
   getSession: (id: string) => getJson<import("@/lib/types").SessionDetail>(`/api/sessions/${id}`),
@@ -52,6 +56,19 @@ export const api = {
   report: (id: string) => getJson<import("@/lib/types").ReportResponse>(`/api/sessions/${id}/report`),
   resources: (id: string) =>
     getJson<import("@/lib/types").ResourcePackage[]>(`/api/sessions/${id}/resources`),
+  exports: (id: string) =>
+    getJson<import("@/lib/types").ExportedEntry[]>(`/api/sessions/${id}/exports`),
+  deleteSession: (id: string, opts: { keep_packages?: boolean; keep_exports?: boolean } = {}) =>
+    deleteJson<import("@/lib/types").DeleteSessionResponse>(
+      `/api/sessions/${id}?keep_packages=${opts.keep_packages === true}&keep_exports=${opts.keep_exports === true}`,
+    ),
+  allResources: (filter: { session_id?: string; entry_id?: string } = {}) => {
+    const params = new URLSearchParams();
+    if (filter.session_id) params.set("session_id", filter.session_id);
+    if (filter.entry_id) params.set("entry_id", filter.entry_id);
+    const qs = params.toString();
+    return getJson<import("@/lib/types").ResourceLibraryResponse>(`/api/resources${qs ? `?${qs}` : ""}`);
+  },
   topicState: (id: string, entryId: string) =>
     getJson<import("@/lib/types").TopicStateResponse>(`/api/sessions/${id}/topics/${entryId}/state`),
   teachUrl: (id: string, entryId: string) => apiUrl(`/api/sessions/${id}/topics/${entryId}/teach`),

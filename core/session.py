@@ -520,5 +520,162 @@ class SessionStore:
             for r in rows
         ]
 
+    # ---------- 条目化导出产物 ----------
+
+    def save_export_entries(
+        self, session_id: str, entries: list[dict[str, Any]]
+    ) -> None:
+        """落库条目化导出产物（知识库同构条目，FR-23）。
+
+        entries 每条 = SeedEntry 同构字段 + source_entry_id；
+        重导出覆盖同 id 条目（UNIQUE(session_id, entry_id)）。
+        """
+        db = self._connect()
+        try:
+            for e in entries:
+                entry_json = {k: v for k, v in e.items() if k != "source_entry_id"}
+                db.execute(
+                    """INSERT INTO exported_entries
+                       (session_id, entry_id, source_entry_id, entry_json, exported_at)
+                       VALUES (?, ?, ?, ?, ?)
+                       ON CONFLICT(session_id, entry_id) DO UPDATE SET
+                         source_entry_id=excluded.source_entry_id,
+                         entry_json=excluded.entry_json,
+                         exported_at=excluded.exported_at""",
+                    (
+                        session_id,
+                        e["id"],
+                        e.get("source_entry_id", ""),
+                        json.dumps(entry_json, ensure_ascii=False),
+                        _now(),
+                    ),
+                )
+            db.commit()
+        finally:
+            db.close()
+
+    def load_export_entries(self, session_id: str) -> list[dict[str, Any]]:
+        """读条目化导出产物：SeedEntry 同构字段 + source_entry_id + exported_at。"""
+        db = self._connect()
+        try:
+            rows = db.execute(
+                "SELECT source_entry_id, entry_json, exported_at "
+                "FROM exported_entries WHERE session_id=? ORDER BY id",
+                (session_id,),
+            ).fetchall()
+        finally:
+            db.close()
+        return [
+            {"source_entry_id": r[0], "exported_at": r[2], **json.loads(r[1])}
+            for r in rows
+        ]
+
+    # ---------- 会话清理与跨会话聚合 ----------
+
+    def delete_session(
+        self,
+        session_id: str,
+        *,
+        keep_packages: bool = False,
+        keep_exports: bool = False,
+    ) -> dict[str, int]:
+        """删除会话与过程数据，返回各表删除行数。
+
+        事件/轮次/掌握度快照是教学过程数据，随会话删除；资源包与条目化导出是
+        沉淀产物，可按参数保留（成为无会话归属的孤儿行，仍可在资源库聚合展示，
+        删除会话前其 learner_id/session_id 已落在行内，溯源信息不丢）。
+        """
+        deleted: dict[str, int] = {}
+        db = self._connect()
+        try:
+            cur = db.execute("DELETE FROM session_events WHERE session_id=?", (session_id,))
+            deleted["events"] = cur.rowcount
+            cur = db.execute("DELETE FROM topic_rounds WHERE session_id=?", (session_id,))
+            deleted["rounds"] = cur.rowcount
+            cur = db.execute("DELETE FROM mastery_snapshots WHERE session_id=?", (session_id,))
+            deleted["snapshots"] = cur.rowcount
+            if not keep_packages:
+                cur = db.execute("DELETE FROM resource_packages WHERE session_id=?", (session_id,))
+                deleted["packages"] = cur.rowcount
+            if not keep_exports:
+                cur = db.execute("DELETE FROM exported_entries WHERE session_id=?", (session_id,))
+                deleted["exports"] = cur.rowcount
+            db.execute("DELETE FROM sessions WHERE session_id=?", (session_id,))
+            db.commit()
+        finally:
+            db.close()
+        return deleted
+
+    def load_all_packages(
+        self, *, session_id: str | None = None, entry_id: str | None = None
+    ) -> list[dict[str, Any]]:
+        """跨会话聚合资源包（资源库页面数据源），可按来源会话/条目筛选。
+
+        LEFT JOIN sessions：会话被删后保留的包 session_status 为 None（孤儿行）。
+        """
+        db = self._connect()
+        try:
+            rows = db.execute(
+                """SELECT rp.session_id, rp.learner_id, rp.entry_id, rp.lecture_json,
+                          rp.questions_json, rp.practice_json, rp.challenge_json,
+                          rp.difficulty_tier, rp.created_at, s.status
+                   FROM resource_packages rp
+                   LEFT JOIN sessions s ON s.session_id = rp.session_id
+                   WHERE (? IS NULL OR rp.session_id = ?)
+                     AND (? IS NULL OR rp.entry_id = ?)
+                   ORDER BY rp.id""",
+                (session_id, session_id, entry_id, entry_id),
+            ).fetchall()
+        finally:
+            db.close()
+        return [
+            {
+                "session_id": r[0],
+                "learner_id": r[1],
+                "entry_id": r[2],
+                "lecture": json.loads(r[3]) if r[3] else [],
+                "questions": json.loads(r[4]) if r[4] else [],
+                "practice": json.loads(r[5]) if r[5] else None,
+                "challenge": json.loads(r[6]) if r[6] else None,
+                "difficulty_tier": r[7],
+                "created_at": r[8],
+                "session_status": r[9],
+            }
+            for r in rows
+        ]
+
+    def load_all_export_entries(
+        self, *, session_id: str | None = None, entry_id: str | None = None
+    ) -> list[dict[str, Any]]:
+        """跨会话聚合条目化导出产物（资源库页面数据源），可按来源会话/源条目筛选。
+
+        entry_id 筛选命中源条目或生成条目（两种引用方式都常见）。
+        """
+        db = self._connect()
+        try:
+            rows = db.execute(
+                """SELECT ee.session_id, ee.source_entry_id, ee.entry_json, ee.exported_at,
+                          s.learner_id, s.status
+                   FROM exported_entries ee
+                   LEFT JOIN sessions s ON s.session_id = ee.session_id
+                   WHERE (? IS NULL OR ee.session_id = ?)
+                     AND (? IS NULL OR ee.source_entry_id = ? OR json_extract(ee.entry_json, '$.id') = ?)
+                   ORDER BY ee.id""",
+                (session_id, session_id, entry_id, entry_id, entry_id),
+            ).fetchall()
+        finally:
+            db.close()
+        return [
+            {
+                "session_id": r[0],
+                "source_entry_id": r[1],
+                "exported_at": r[3],
+                "learner_id": r[4],
+                "session_status": r[5],
+                **json.loads(r[2]),
+            }
+            for r in rows
+        ]
+
 
 __all__ = ["SessionEvent", "SessionStore"]

@@ -133,6 +133,18 @@ SCHEMA = """
         created_at  TEXT NOT NULL,
         UNIQUE(session_id, entry_id)
     );
+
+    -- 条目化导出产物：与知识库同构的知识条目（产出物可复用的本体，FR-23）
+    -- entry_json 为 SeedEntry 同构完整条目（可被 init_db 原样入库）；重导出覆盖同 id 条目
+    CREATE TABLE IF NOT EXISTS exported_entries (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id      TEXT NOT NULL,
+        entry_id        TEXT NOT NULL,           -- 生成条目 id（GEN-<源条目>-<学习者>）
+        source_entry_id TEXT NOT NULL DEFAULT '',-- 源知识库条目 id（报告页溯源用）
+        entry_json      TEXT NOT NULL,
+        exported_at     TEXT NOT NULL,
+        UNIQUE(session_id, entry_id)
+    );
 """
 
 

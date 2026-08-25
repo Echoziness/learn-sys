@@ -14,10 +14,15 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from api.models import (
+    AggregatedExportEntryOut,
+    AggregatedPackageOut,
     AnswerRequest,
     CreateSessionRequest,
     CreateSessionResponse,
+    DeleteSessionOut,
+    ExportedEntryOut,
     PlanTopicOut,
+    ResourcesAggregateOut,
     SessionListItemOut,
 )
 from api.sse import sse_frame
@@ -27,6 +32,9 @@ from core.state import LearnerProfile
 logger = structlog.get_logger()
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
+
+# 跨会话聚合端点（资源库页面）：不属于单个会话，独立前缀
+resources_router = APIRouter(prefix="/api", tags=["resources"])
 
 
 def _deps(request: Request):
@@ -204,6 +212,58 @@ async def resources(session_id: str, request: Request):
     store, _ = _deps(request)
     _session_or_404(store, session_id)
     return store.load_packages(session_id)
+
+
+@router.get("/{session_id}/exports", response_model=list[ExportedEntryOut])
+async def exports(session_id: str, request: Request):
+    """条目化导出产物（知识库同构条目，FR-23）——由 export_packages 脚本产出后落库。"""
+    store, _ = _deps(request)
+    _session_or_404(store, session_id)
+    return store.load_export_entries(session_id)
+
+
+@router.delete("/{session_id}", response_model=DeleteSessionOut)
+async def delete_session(
+    session_id: str,
+    request: Request,
+    keep_packages: bool = False,
+    keep_exports: bool = False,
+):
+    """删除会话与过程数据（事件/轮次/掌握度）；资源包与导出条目可按参数额外保留。"""
+    store, _ = _deps(request)
+    _session_or_404(store, session_id)
+    deleted = store.delete_session(
+        session_id, keep_packages=keep_packages, keep_exports=keep_exports
+    )
+    logger.info(
+        "session_deleted",
+        session_id=session_id,
+        keep_packages=keep_packages,
+        keep_exports=keep_exports,
+        deleted=deleted,
+    )
+    return DeleteSessionOut(
+        session_id=session_id,
+        deleted=deleted,
+        kept_packages=keep_packages,
+        kept_exports=keep_exports,
+    )
+
+
+@resources_router.get("/resources", response_model=ResourcesAggregateOut)
+async def all_resources(
+    request: Request, session_id: str | None = None, entry_id: str | None = None
+):
+    """跨会话聚合资源包与导出条目（资源库页面数据源），可按来源会话/条目筛选。"""
+    store, _ = _deps(request)
+    return ResourcesAggregateOut(
+        packages=[AggregatedPackageOut(**p) for p in store.load_all_packages(
+            session_id=session_id, entry_id=entry_id
+        )],
+        exports=[AggregatedExportEntryOut(**e) for e in store.load_all_export_entries(
+            session_id=session_id, entry_id=entry_id
+        )],
+    )
 
 
 @router.get("/{session_id}/replay")

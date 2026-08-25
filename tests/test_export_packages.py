@@ -10,6 +10,7 @@ import pytest
 from scripts.export_packages import (
     collect_export_entries,
     collect_fail_material,
+    persist_exported,
     validate_exported,
 )
 from scripts.init_db import SeedEntry, ensure_schema
@@ -126,3 +127,22 @@ def test_export_end_to_end_validates_and_distills(store):
     # 序列化形态与 entries.jsonl 行格式一致（单行 JSON）
     line = json.dumps(item, ensure_ascii=False)
     SeedEntry.model_validate_json(line)
+
+
+def test_persist_exported_roundtrip(store):
+    """落库后可经 load_export_entries 读回（GET /exports 数据源），源条目 id 反推正确。"""
+    sid = _seed_session(store)
+    session = store.get_session(sid)
+    assert session is not None
+    exported = asyncio.run(
+        collect_export_entries(store, session, [_Entry], provider=FakeProvider())  # type: ignore[arg-type]
+    )
+    persist_exported(store, sid, "p01", exported)
+    loaded = store.load_export_entries(sid)
+    assert len(loaded) == 1
+    assert loaded[0]["id"] == "GEN-BDA-SQL-001-p01"
+    assert loaded[0]["source_entry_id"] == "BDA-SQL-001"
+    assert loaded[0]["content"] == exported[0]["content"]
+    # 落库不污染同构体：entry_json 仍可直接过 SeedEntry 校验
+    seed_shape = {k: v for k, v in loaded[0].items() if k not in ("source_entry_id", "exported_at")}
+    SeedEntry.model_validate(seed_shape)

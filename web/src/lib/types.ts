@@ -125,9 +125,13 @@ export interface ArchivedQuestion {
   round: number;
 }
 
+export interface PracticeStep {
+  text: string;
+  evidence_ids: string[];
+}
+
 export interface PracticeGuide {
-  steps: string[];
-  example?: string;
+  steps: PracticeStep[];
   checkpoints?: string[];
 }
 
@@ -141,6 +145,46 @@ export interface ResourcePackage {
   challenge: { title: string; description?: string } | null;
   difficulty_tier: string;
   created_at: string;
+}
+
+/** 条目化导出产物（知识库同构条目，FR-23）：字段与 entries.jsonl 同构 + 溯源与导出时间 */
+export interface ExportedEntry {
+  id: string;
+  source_entry_id: string;
+  knowledge_type: "memory" | "concept" | "procedure" | string;
+  title: string;
+  content: string;
+  prerequisites: string[];
+  difficulty: number;
+  keywords: string[];
+  source: string;
+  exported_at: string;
+}
+
+/** 删除会话响应（DELETE /api/sessions/{id}） */
+export interface DeleteSessionResponse {
+  session_id: string;
+  deleted: Record<string, number>;
+  kept_packages: boolean;
+  kept_exports: boolean;
+}
+
+/** 跨会话聚合的资源包（资源库页面）：包字段 + 来源会话状态（会话已删时为 null） */
+export interface AggregatedPackage extends ResourcePackage {
+  session_status: string | null;
+}
+
+/** 跨会话聚合的导出条目：条目字段 + 来源会话信息 */
+export interface AggregatedExportEntry extends ExportedEntry {
+  session_id: string;
+  learner_id?: string | null;
+  session_status: string | null;
+}
+
+/** 资源库聚合响应（GET /api/resources） */
+export interface ResourceLibraryResponse {
+  packages: AggregatedPackage[];
+  exports: AggregatedExportEntry[];
 }
 
 /** 主题进度状态（GET /topics/{entry}/state）——学生面驱动循环与刷新恢复的依据 */

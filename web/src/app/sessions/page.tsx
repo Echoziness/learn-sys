@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
 import type { SessionListItem } from "@/lib/types";
@@ -9,6 +10,7 @@ import { LevelBadge } from "@/components/shared/badges";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
@@ -18,10 +20,10 @@ const STATUS_META: Record<string, { label: string; className: string }> = {
   aborted: { label: "已中止", className: "bg-gray-100 text-gray-600" },
 };
 
-function ActionLinks({ s }: { s: SessionListItem }) {
+function ActionLinks({ s, children }: { s: SessionListItem; children?: React.ReactNode }) {
   const link = "inline-flex h-7 items-center rounded-md px-2 text-xs hover:bg-muted";
   return (
-    <div className="flex justify-end gap-1">
+    <div className="flex flex-wrap justify-end gap-1">
       {s.status === "active" && (
         <Link href={`/sessions/${s.session_id}`} className={link}>
           继续
@@ -33,6 +35,68 @@ function ActionLinks({ s }: { s: SessionListItem }) {
       <Link href={`/sessions/${s.session_id}/report`} className={link}>
         报告
       </Link>
+      {children}
+    </div>
+  );
+}
+
+/** 删除会话两步确认：先选保留策略再确认，防误删；过程数据（事件/轮次/掌握度）必删，
+ * 资源包与导出条目可选择额外保留（孤儿产物仍在资源库聚合展示） */
+function DeleteControl({ s }: { s: SessionListItem }) {
+  const queryClient = useQueryClient();
+  const [confirming, setConfirming] = useState(false);
+  const [keep, setKeep] = useState("none");
+  const del = useMutation({
+    mutationFn: () =>
+      api.deleteSession(s.session_id, { keep_packages: keep !== "none", keep_exports: keep !== "none" }),
+    onSuccess: () => {
+      setConfirming(false);
+      setKeep("none");
+      void queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      void queryClient.invalidateQueries({ queryKey: ["resource-library"] });
+    },
+  });
+
+  if (!confirming) {
+    return (
+      <button
+        type="button"
+        className="inline-flex h-7 items-center rounded-md px-2 text-xs text-destructive hover:bg-destructive/10"
+        onClick={() => setConfirming(true)}
+      >
+        删除…
+      </button>
+    );
+  }
+  return (
+    <div className="flex flex-wrap items-center justify-end gap-1">
+      <Select value={keep} onValueChange={setKeep}>
+        <SelectTrigger className="h-7 w-36 text-xs">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="none">全部删除</SelectItem>
+          <SelectItem value="keep">保留资源包与导出条目</SelectItem>
+        </SelectContent>
+      </Select>
+      <Button
+        size="sm"
+        variant="destructive"
+        className="h-7 text-xs"
+        disabled={del.isPending}
+        title={`删除会话 ${s.learner_id}（${s.session_id.slice(0, 8)}…）：事件/轮次/掌握度等过程数据一并删除${
+          keep !== "none" ? "，资源包与导出条目额外保留" : ""
+        }`}
+        onClick={() => del.mutate()}
+      >
+        {del.isPending ? "删除中…" : "确认删除"}
+      </Button>
+      <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setConfirming(false)}>
+        取消
+      </Button>
+      {del.isError && (
+        <p className="w-full text-right text-[10px] text-destructive">{String(del.error?.message ?? "").slice(0, 60)}</p>
+      )}
     </div>
   );
 }
@@ -73,7 +137,9 @@ function SessionTable({ data }: { data: SessionListItem[] }) {
                 {s.created_at.slice(0, 16).replace("T", " ")}
               </TableCell>
               <TableCell className="text-right">
-                <ActionLinks s={s} />
+                <ActionLinks s={s}>
+                  <DeleteControl s={s} />
+                </ActionLinks>
               </TableCell>
             </TableRow>
           );
@@ -94,7 +160,7 @@ export default function SessionsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">历史会话</h1>
-          <p className="text-sm text-muted-foreground">裁判面回放 / 学情报告入口（无需 LLM key）</p>
+          <p className="text-sm text-muted-foreground">裁判面回放 / 学情报告入口（无需 LLM key）；删除会话时资源包与导出条目可额外保留</p>
         </div>
         <Button variant="outline" size="sm" onClick={() => void sessions.refetch()}>
           刷新

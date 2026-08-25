@@ -53,7 +53,7 @@ learn-sys/
 ├── scripts/                 # 组合根
 │   ├── cli_input.py         # CLI 交互输入层（readline 行编辑 + 输入边界净化；刻意轻量，主战场在 Web）
 │   ├── init_db.py           # 幂等知识库 loader + 会话表迁移（数据来自 data/seeds/，不内嵌数据）
-│   ├── export_packages.py     # 资源包条目化导出（产出物 → entries.jsonl 同构条目，自检后可被 init_db 原样入库）
+│   ├── export_packages.py     # 资源包条目化导出（产出物 → entries.jsonl 同构条目，自检后双写：文件交付物 + exported_entries 表，可被 init_db 原样入库）
 │   └── run_cli.py           # 会话 CLI（薄壳，调 core/teach_loop）
 ├── data/
 │   ├── seeds/<domain>/entries.jsonl  # 知识条目（一等数据文件，换目录即换领域；每条必带 knowledge_type）
@@ -65,6 +65,7 @@ learn-sys/
 │   ├── app/                 # /（画像表单）/ sessions（列表）/ sessions/[id]（学生面工作台）
 │   │                        # / sessions/[id]/orchestration（裁判面，live/replay 双模式）
 │   │                        # / sessions/[id]/report（Recharts 三图 + 资源包浏览）
+│   │                        # / resources（资源库：跨会话聚合资源包与导出条目，会话/条目双筛选）
 │   ├── components/          # student/ orchestration/ report/ shared/ + ui/（shadcn，禁手改）
 │   └── lib/                 # api.ts（REST）/ sse.ts（POST 流解析 + GET EventSource）/ types.ts（事件+响应 SSOT）
 │                            # / orchestration-reducer.ts（事件→节点状态纯函数）
@@ -153,15 +154,15 @@ diagnose（LLM 一次，输出 gap_ids）→ plan（确定性切片：ID 投影 
 - 知识条目必带 `knowledge_type`（`memory` 事实/定义/术语 / `concept` 概念与关系 / `procedure` 步骤技能，枚举在 `scripts/init_db.py.KnowledgeType`，DB 列 DEFAULT 'concept'），描述知识本体（影响教学方式/门槛/复习节奏），不绑定题型，core/plan.KnowledgeEntry 同持此字段（默认 concept）；
 - 新增种子条目 content 控制在 50-100 字（代码片段算字符），且每个关键词去空格后的全部字符必须出现在 content 里（判分靠子串，`tests/test_seeds.py` 全量校验）；
 - DB schema 变更禁止删库重建：`scripts/init_db.py` 用幂等迁移（PRAGMA table_info 查列 → 缺则 `ALTER TABLE ADD COLUMN`），保留运行时数据与 rowid 对齐（FTS/vec 外部表依赖）。
-- **产出物可复用（2026-08-23 拍板）**：资源包经 `scripts/export_packages.py` 条目化导出为与知识库**同构**的 entries.jsonl（SeedEntry schema），可被 init_db 原样入库——"系统生产的资源喂回系统"的硬证明。进库的是知识本身：讲义 supported 论断直接拼接 + distill agent 从错题/脚手架原料提炼的误区知识段落；**题目和脚手架本身不进库**（它们是提炼原料不是知识）。keywords 过滤到 content 实际命中字符（天然过种子校验）；id 规范 `GEN-{entry_id}-{learner_id}`；prerequisites/difficulty/knowledge_type 继承源条目；source 改写为生成溯源链（含审核通过率 n/m）。导出自检：schema 校验 + keywords 字符子集 + id 唯一，失败非零退出；
+- **产出物可复用（2026-08-23 拍板）**：资源包经 `scripts/export_packages.py` 条目化导出为与知识库**同构**的 entries.jsonl（SeedEntry schema），可被 init_db 原样入库——"系统生产的资源喂回系统"的硬证明。进库的是知识本身：讲义 supported 论断直接拼接 + distill agent 从错题/脚手架原料提炼的误区知识段落；**题目和脚手架本身不进库**（它们是提炼原料不是知识）。keywords 过滤到 content 实际命中字符（天然过种子校验）；id 规范 `GEN-{entry_id}-{learner_id}`；prerequisites/difficulty/knowledge_type 继承源条目；source 改写为生成溯源链（含审核通过率 n/m）。导出自检：schema 校验 + keywords 字符子集 + id 唯一，失败非零退出；**自检通过后双写：文件交付物 + exported_entries 表（`GET /{id}/exports` 数据源，报告页展示条目本体），并发 `packages_exported` 审计事件**（2026-08-26）；
 - **审核价值数字已在事件流里**（2026-08-23 确认）：打回重写回路天然产生对照组——`review_done` 事件的 review_round=1 裁决 = 无回路时的裸幻觉率口径，teach_delivered 最终裁决 = 有回路的交付质量。收盘时评测脚本聚合两层即可出"审核机制挽救了多少幻觉"的消融对照，**无需做消融开关**；
 
 ### 3.7 会话层（W1 已上线）
 
 - **进度从历史推导**：reached_answer / scaffold_pending / retry_context 全部由 `topic_rounds` + `mastery_snapshots` 历史计算（`teach_loop.TopicProgress`），无内存会话态——任何进程重启后从 DB 续跑（api 无状态的前提）；
-- **Web 端点补充**（W2）：`GET /api/sessions`（列表，回放入口）；`GET /{id}/stream?after_seq=`（实时 SSE 订阅：先 subscribe 再补读历史、按 seq 去重，裁判面跟随另一 tab）；`GET /{id}/replay?format=json`（带 seq 的 JSON 数组，播放器步进用）；`POST /{id}/end`（session_end 收口）；`GET /{id}/topics/{entry}/state`（needs_teaching/scaffold_pending/prereq_id——Web 工作台镜像 CLI 状态机与刷新恢复的依据）；
+- **Web 端点补充**（W2）：`GET /api/sessions`（列表，回放入口）；`GET /{id}/stream?after_seq=`（实时 SSE 订阅：先 subscribe 再补读历史、按 seq 去重，裁判面跟随另一 tab）；`GET /{id}/replay?format=json`（带 seq 的 JSON 数组，播放器步进用）；`POST /{id}/end`（session_end 收口）；`GET /{id}/topics/{entry}/state`（needs_teaching/scaffold_pending/prereq_id——Web 工作台镜像 CLI 状态机与刷新恢复的依据）；`GET /{id}/exports`（条目化导出产物，知识库同构条目，未导出时空数组）；`DELETE /{id}?keep_packages&keep_exports`（删会话与过程数据，产物可额外保留为孤儿行）；`GET /api/resources`（跨会话聚合资源库，`?session_id&entry_id` 筛选，/resources 页面数据源）；
 - **事件流一表三用**：`session_events`（seq 会话内单调 + payload 自包含）同时服务裁判面渲染、回放演示、审计日志；实时 = emit 写库 + 进程内订阅推送，回放 = 按 seq 读表，前端渲染代码复用；
-- **事件协议**：session_start / diagnose_done / plan_done / topic_start / retrieve_done / generate_done / review_done / teach_delivered / question_built / answer_graded / scaffold_offered / topic_advance / topic_regress / package_saved / session_end（+error）——payload 字段见架构文档 §4；
+- **事件协议**：session_start / diagnose_done / plan_done / topic_start / retrieve_done / generate_done / review_done / teach_delivered / question_built / answer_graded / scaffold_offered / topic_advance / topic_regress / package_saved / packages_exported / session_end（+error）——payload 字段见架构文档 §4；
 - **教学轮生命周期**：next_question 落 pending 轮（幂等，web 刷新安全）→ handle_answer 填充 answer/grade/decision → 重教时 delete_pending_rounds 作废；
 - **资源包 upsert 合并**：UNIQUE(session_id, entry_id)；讲义跨轮追加合并，题目按 question_id 去重（重教重生成覆盖旧版），practice/challenge 用 COALESCE 保留旧值；
 - **脚手架决策收口**：脚手架答对不写掌握度快照，决策从计数历史重算（防洗白降维计数/防虚高 advance）——落在 teach_loop.handle_answer；

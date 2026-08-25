@@ -10,6 +10,9 @@
 ——"产出物可复用"的硬证明。进库的是知识本身：讲义论断（审核通过）直接
 拼接；错题/脚手架原料经 distill agent 提炼为"常见误区"知识段落进入 content。
 
+自检通过后双写：entries.jsonl 文件（交付物）+ exported_entries 表
+（GET /api/sessions/{id}/exports 数据源，报告页展示条目本体）。
+
 自检：每条过 SeedEntry 校验 + 关键词字符 ⊆ content（判分同语义）+ id 唯一，
 任一失败非零退出（导出物必须天然满足知识库约束，不靠事后修）。
 """
@@ -132,6 +135,20 @@ def validate_exported(entries: list[dict[str, Any]]) -> list[str]:
     return errors
 
 
+def persist_exported(
+    store: SessionStore, session_id: str, learner_id: str, exported: list[dict[str, Any]]
+) -> None:
+    """导出产物落库（GET /exports 数据源）。源条目 id 由生成 id 规范反推。"""
+    rows = [
+        {
+            **item,
+            "source_entry_id": item["id"].removeprefix("GEN-").removesuffix(f"-{learner_id}"),
+        }
+        for item in exported
+    ]
+    store.save_export_entries(session_id, rows)
+
+
 async def collect_export_entries(
     store: SessionStore,
     session: dict[str, Any],
@@ -211,6 +228,14 @@ async def main() -> None:
         for e in errors:
             print(f"[自检失败] {e}", file=sys.stderr)
         raise SystemExit(1)
+
+    sid = session["session_id"]
+    persist_exported(store, sid, session["learner_id"], exported)
+    await store.emit(
+        sid,
+        "packages_exported",
+        {"entry_ids": [item["id"] for item in exported], "count": len(exported)},
+    )
 
     out = Path(args.out) if args.out else Path(
         f"data/exports/entries-{session['learner_id']}-{session['session_id'][:8]}.jsonl"
