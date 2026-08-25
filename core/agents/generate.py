@@ -82,8 +82,94 @@ GENERATE_PROMPT = """你是大数据分析领域的培训讲师。根据以下�
 严格按 JSON 输出：
 {{"draft": [{{"claim_index": 1, "text": "...", "evidence_ids": ["..."], "claim_type": "core"}}]}}"""
 
+# 定向改写（2026-08-26）：只重写被驳回的论断，supported 部分原封不动——
+# 整稿重写会把已通过的论断重新生成、甚至复现已被驳回的内容（实测踩坑）。
+REWRITE_PROMPT = """你是大数据分析领域的培训讲师。上一轮讲义中有几条论断被审核驳回，
+请只改写这些被驳回的论断，其余论断已通过审核、不需要你处理。
+
+【本次教学主题条目】（改写必须严格基于它）：
+{anchor_entry}
+
+【被驳回的论断及驳回理由】（逐条重写，逐条回应驳回理由）：
+{rejected}
+
+改写要求：
+1. 输出的每条论断的 claim_index 必须与被驳回的论断一一对应（原位替换）；
+2. 删除被驳回的无依据内容，只保留条目原文支持的部分；若该论断删掉无依据
+   部分后空洞，则换一个条目确有依据的角度重写（仍聚焦同一教学点）；
+3. 严禁把被驳回的原话换个说法再写一遍——那会再次被驳回；
+4. evidence_ids 必须来自上述主题条目；每条 80-150 字，保持教学段落形态；
+   claim_type 与被驳回论断保持一致。
+5. 学员画像摘要（仅供调整表达难度）：{profile_summary}
+
+严格按 JSON 输出（只输出被驳回论断的替代版，数量与输入一致）：
+{{"draft": [{{"claim_index": 2, "text": "...", "evidence_ids": ["..."], "claim_type": "core"}}]}}"""
+
 
 async def generate_node(
+    state: AgentState, *, provider: LLMProvider, model: str | None = None
+) -> dict:
+    rejected = state.get("rejected_claims", [])
+    if rejected and state.get("draft"):
+        return await _rewrite_rejected(state, rejected, provider=provider, model=model)
+    return await _generate_full(state, provider=provider, model=model)
+
+
+async def _rewrite_rejected(
+    state: AgentState, rejected: list[dict], *, provider: LLMProvider, model: str | None
+) -> dict:
+    """定向改写：只重写被驳回论断，合并回原稿（保持 claim_index 与通过论断不变）。"""
+    anchor = state.get("anchor_entry")
+    anchor_entry_text = (
+        json.dumps(
+            {
+                "id": anchor.id,
+                "title": anchor.title,
+                "content": anchor.content,
+                "knowledge_type": getattr(anchor, "knowledge_type", "concept"),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        if anchor is not None
+        else "（未指定）"
+    )
+    output = await provider.chat_validated(
+        [
+            {
+                "role": "user",
+                "content": REWRITE_PROMPT.format(
+                    anchor_entry=anchor_entry_text,
+                    rejected=json.dumps(rejected, ensure_ascii=False, indent=2),
+                    profile_summary=state.get("profile_summary", ""),
+                ),
+            }
+        ],
+        schema=GenerateOutput,
+        model=model,
+    )
+
+    # 原位替换：只接受与被驳回论断对应的替代版，多余输出丢弃（防改写面扩散）
+    rejected_indices = {int(r["claim_index"]) for r in rejected}
+    replacements = {
+        c.claim_index: c for c in output.draft if c.claim_index in rejected_indices
+    }
+    merged_draft = [replacements.get(c.claim_index, c) for c in state.get("draft", [])]
+    # 改写失败兜底（LLM 漏写某条）：保留原论断——裁决会再次记不支持，不静默吞错因。
+    for idx in rejected_indices - set(replacements):
+        logger.warning("rewrite_missing_replacement", claim_index=idx)
+    cited_ids = {eid for claim in merged_draft for eid in claim.evidence_ids}
+    cited_entries = [e for e in state.get("retrieved_entries", []) if e.id in cited_ids]
+    logger.info(
+        "generate_rewrite_done",
+        rewritten=len(replacements),
+        rejected=len(rejected_indices),
+        claims_count=len(merged_draft),
+    )
+    return {"draft": merged_draft, "cited_entries": cited_entries}
+
+
+async def _generate_full(
     state: AgentState, *, provider: LLMProvider, model: str | None = None
 ) -> dict:
     retrieved = state.get("retrieved_entries", [])

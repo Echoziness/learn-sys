@@ -2,7 +2,8 @@
 
 约定：
 - LLM 输出必须在 agent 边界 parse 成下方 Pydantic 模型后再写入 state，禁止裸 dict 流动；
-- review_history 使用 append reducer，辩论链只增不改，全程可追溯；
+- review_history 使用 append reducer，裁决日志只增不改：每轮只 append 本轮新裁决的论断，
+  论断的当前裁决 = 日志中该论断最新一条（latest_verdicts），全程可追溯；
 - 各 agent 的上下文隔离由 graph 装配层保证（节点只提取职责内字段）。
 """
 
@@ -85,7 +86,11 @@ class AgentState(TypedDict, total=False):
     advance_hint: str  # 识别通过推进：上一轮 choice 答对（core 论断向应用推进，不触发 extension）
     taught_previously: list[str]  # 重教轮去重：之前各轮已教过的论断文本（禁止复读，重教必须给增量）
 
-    # review：辩论链追加式累积；feedback 是生成 Agent 下一轮的唯一反馈通道
+    # review：裁决日志追加式累积（每轮只 append 新裁决的论断）；feedback 是生成 Agent 下一轮的唯一反馈通道
     review_round: int
     review_history: Annotated[list[ReviewNote], operator.add]
     last_review_feedback: str
+    # 定向改写通道（2026-08-26）：本轮被驳回论断清单（claim_index/text/verdict/reason/suggestion）
+    # 非空时 generate 只重写这几条（保持 claim_index 原位替换），不再整稿重生成；
+    # 每轮 review 覆写，重教轮新 invoke 天然为空。
+    rejected_claims: list[dict]

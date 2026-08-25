@@ -21,6 +21,7 @@ import structlog
 from langgraph.graph import END, START, StateGraph
 
 from core.agents import generate_node, review_node
+from core.agents.review import latest_verdicts
 from core.config import Settings
 from core.llm import LLMProvider
 from core.retrieval import GapSearchResult, Retriever
@@ -79,11 +80,13 @@ def build_teach_graph(settings: Settings, provider: LLMProvider, retriever: Retr
     输入 state 须含 gaps（当前主题标题）、difficulty_level；输出 draft /
     review_history / retrieved_entries。调用方可反复 invoke 以重教（retry）。
 
-    审核回流（2026-08-15）：unsupported ≥ REVIEW_RETRY_THRESHOLD 且
-    review_round < MAX_REVIEW_RETRIES → 回 generate 重写（带
-    last_review_feedback 打回意见）。上限防无限辩论（对齐"辩论轮次
-    硬上限"约定）；超限放行——裁决已落 review_history，幻觉率指标
-    照常可复算，下游（CLI/出题）知晓"教学质量存疑"。
+    审核回流（2026-08-26 定向打回）：有任意 1 条当前裁决为 unsupported 且
+    review_round < MAX_REVIEW_RETRIES → 回 generate **只重写被驳回论断**
+    （rejected_claims 通道，supported 部分原封不动——论断间相互独立，
+    整稿重写会复现已驳回内容且浪费成本）。当前裁决按论断取日志最新一条
+    （review_history 是 append-only 裁决日志，见 core/agents/review）。
+    上限防无限辩论（对齐"辩论轮次硬上限"约定）；超限放行——裁决已落
+    review_history，幻觉率指标照常可复算，下游（CLI/出题）知晓"教学质量存疑"。
     """
     g = StateGraph(AgentState)
     g.add_node("retrieve", partial(retrieve_node, retriever=retriever, top_k=settings.retrieval_top_k))
@@ -104,8 +107,9 @@ def build_teach_graph(settings: Settings, provider: LLMProvider, retriever: Retr
     return compiled
 
 
-# 审核打回阈值：unsupported 论断数达到此值即打回重写（R2 日志：3/4 未支持仍放行）
-REVIEW_RETRY_THRESHOLD = 2
+# 审核打回阈值：不支持论断数达到此值即定向打回重写（2026-08-26 从 2 改为 1：
+# 单条定向改写成本可控，单条漏网不应放行）
+REVIEW_RETRY_THRESHOLD = 1
 # 审核打回轮次上限：防 generate↔review 无限辩论
 MAX_REVIEW_RETRIES = 2
 
@@ -114,8 +118,10 @@ def _review_gate(state: AgentState) -> str:
     """审核回流闸门：纯函数读 state，无 LLM。"""
     if state.get("review_round", 0) >= MAX_REVIEW_RETRIES:
         return "done"
-    history = state.get("review_history", [])
-    # 只看最近一轮裁决（review_history 是 append 累积的，旧轮已打回重写过）
-    latest = history[-len(state.get("draft", [])):] if state.get("draft") else []
-    unsupported = sum(1 for n in latest if n.verdict == "unsupported")
+    # 当前裁决按论断取日志最新一条（日志含新旧轮，旧轮被驳回的论断已由改写版覆盖）
+    latest = latest_verdicts(state.get("review_history", []))
+    unsupported = sum(
+        1 for c in state.get("draft", []) if latest.get(c.claim_index) and
+        latest[c.claim_index].verdict == "unsupported"
+    )
     return "regenerate" if unsupported >= REVIEW_RETRY_THRESHOLD else "done"

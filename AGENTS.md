@@ -96,7 +96,7 @@ web/ ──(SSE)──→ api/ ──→ core/ ──→ data/
 
 ```text
 diagnose（LLM 一次，输出 gap_ids）→ plan（确定性切片：ID 投影 + 前置链闭包 + 拓扑排序）
-  → 逐主题教学子图（retrieve[anchor 锚定] → generate → review；unsupported ≥2 时 review→generate 回流重写，上限 2 轮；retry 轮错因回流进 generate）
+  → 逐主题教学子图（retrieve[anchor 锚定] → generate → review；有任意 1 条 unsupported 时 review→generate 定向打回重写被驳回论断，上限 2 轮；retry 轮错因回流进 generate）
   → question/assess（出题：题型单向推进，answer 题干由 LLM 生成，深度以本轮教学内容为上限）
   → 学生作答 → answer_pipeline（规则判分 → LLM 复核/评估 → 掌握度更新）
   → 决策：advance（下一主题）/ retry（重教：错因回流 + 题目重生成）/ regress（回前置主题降维）
@@ -115,8 +115,8 @@ diagnose（LLM 一次，输出 gap_ids）→ plan（确定性切片：ID 投影 
 |---|---|---|
 | diagnose | `learner_profile`, `test_results` | `gap_ids`（收敛到本体目录）, `gaps`, `profile_summary`, `difficulty_level` |
 | retrieve | `gaps`, `difficulty_level`, `anchor_entry` | `retrieved_entries`, `uncovered_gaps` |
-| generate | `retrieved_entries`, `anchor_entry`, `profile_summary`, `outline`, `last_review_feedback`, `retry_context`, `taught_previously`（重教轮已教论断，禁止复读）, `uncovered_gaps`, `difficulty_level` | `draft`, `cited_entries`（procedure 条目须含 procedure_guide 论断） |
-| review | `draft`, `cited_entries`, `review_round` | `review_history`(append), `review_round`, `last_review_feedback` |
+| generate | `retrieved_entries`, `anchor_entry`, `profile_summary`, `outline`, `last_review_feedback`, `rejected_claims`（定向改写通道，非空时只重写被驳回论断）, `retry_context`, `taught_previously`（重教轮已教论断，禁止复读）, `uncovered_gaps`, `difficulty_level` | `draft`, `cited_entries`（procedure 条目须含 procedure_guide 论断） |
+| review | `draft`, `cited_entries`, `review_round` | `review_history`(append), `review_round`, `last_review_feedback`, `rejected_claims`（被驳回论断清单，每轮覆写） |
 | plan（纯函数） | —（不入 state，teach_loop 直接调用） | — |
 | assess（纯函数） | 条目（KnowledgeEntry）+ 当前掌握度 | 题目（按掌握度选题型） |
 | feedback（LLM 节点） | 题目、作答、规则判分结果 | verdict / evaluation / missed_requirements |
@@ -130,7 +130,7 @@ diagnose（LLM 一次，输出 gap_ids）→ plan（确定性切片：ID 投影 
 ### 3.6 关键 schema 约束
 
 - 生成 Agent 输出每条论断必含 `evidence_ids`（引用知识条目 ID 的列表）与 `claim_type`：`core`（条目覆盖层，严格证据链）/ `extension`（错因扩展层，仅重教轮出现，针对学生错因的应用级讲解，允许推导与示例但不得引入条目之外的新概念）/ `procedure_guide`（实操指南步骤，仅 procedure 条目，步骤+可运行示例+检查点）；**core 内部按教学弧组织**（2026-08-23）：概念论断（定义+类比）→ 示例论断（worked example：具体表名/列名/数据值的具体化不算编造，概念与语法不得超条目）→ 要点论断（条目原文**写明的**规则/默认行为/边界换强调形式——工程实践建议类内容条目没有就是没有，写了必被打回）；
-- 审核 Agent 输出每条论断的裁决 = `supported | partially_supported | unsupported`（NLI 三分类）；**分级标准**：core 论断必须被条目原文明确支持；extension 与 procedure_guide 论断降为"概念一致 + 推导自洽"（防幻觉锚点不放松——evidence_ids 照常校验，只是裁决标准分级）；
+- 审核 Agent 输出每条论断的裁决 = `supported | partially_supported | unsupported`（NLI 三分类）；**裁决语义对齐赛题幻觉本义（2026-08-26）**：幻觉 = 专业知识谬误——`unsupported` 仅留给与条目矛盾/引入条目之外新概念/无法核实的编造事实（拿不准则判，从严）；条目未写明但事实正确、与条目概念一致的领域公认常识判 `partially_supported`（过度延伸，不计幻觉）；**分级标准**：core 论断必须被条目原文明确支持（示例句/常识引申两例外）；extension 与 procedure_guide 论断降为"概念一致 + 推导自洽"（防幻觉锚点不放松——evidence_ids 照常校验，只是裁决标准分级）；讲义仍只收 supported（资源侧严格不变，只是不再把无谬误内容计为谬误）；
 - 所有 agent 间消息用 Pydantic BaseModel / TypedDict 定义；
 - 掌握度数学只在 `core/mastery.py`（纯函数：recency-weighted + 置信度封顶 + 门槛 0.7 + 连错 2 次降维），新增教学数值必须落在此处，禁止散落各节点；
 - 出题/判分只在 `core/assess.py`（fail-closed：无 expected 关键词即判错，绝不判对）；expected 永不进学生视野（只落 topic_rounds.expected_json，不进事件流）；
@@ -148,7 +148,7 @@ diagnose（LLM 一次，输出 gap_ids）→ plan（确定性切片：ID 投影 
 - **出题深度契约**：回答题必须注入教学论断（`taught_claims`，取自该条目**全部轮次** teach_delivered 事件累积，带 claim_type 分层）作为出题上限——学生只需运用已教概念即可作答，禁止问教学内容未覆盖的深度（防"教得浅、考得深"）；retry 重教后 delete_pending_rounds 作废旧题重生成；
 - **巩固模式**（2026-08-15 拍板）：answer 答对但未达门槛（唯一缺口是证据数量，矛盾检测保证 correct 蕴含无遗漏）→ `TopicProgress.needs_teaching=False`，驱动方跳过教学直接出确认题——确定性规则读历史，不改变 mastery 数学（证据照常由作答累积）；choice 答对仍教学（识别→回忆之间有真实教学空间，走 `advance_hint` 通道）；
 - **教学信号双通道**：`retry_context`（上一轮**答错**：题目+作答+评估，extension 论断的唯一触发源）与 `advance_hint`（上一轮 choice 答对：core 论断向应用推进）分通道注入——识别通过不是错因，混通道会污染 extension 语义（choice 答对轮教学被标成错因扩展）；
-- **审核回流**（graph 条件边）：unsupported ≥2 且 review_round<2 → review→generate 回流重写（带 last_review_feedback 打回意见）；超限放行——裁决已落 review_history，幻觉率指标照常可复算。teach_round 取 review_history **最新一轮切片**（append 累积，旧轮已打回重写不再计入展示与事件）；
+- **审核回流**（graph 条件边，2026-08-26 定向打回）：有任意 1 条当前裁决 unsupported 且 review_round<2 → review→generate **定向打回**（`rejected_claims` 通道只重写被驳回论断，supported 部分原封不动——论断间相互独立，整稿重写会复现已驳回内容且浪费成本；阈值从 2 降为 1，单条漏网不再放行）；**裁决日志模型**：`review_history` 是 append-only 裁决日志，每轮只 append 本轮新裁决的论断（rewrite 轮只复审被改写论断），论断的当前裁决 = 日志中该论断最新一条（`latest_verdicts`，闸门/事件/指标同源）——裁决属于论断不属于轮，未改写论断裁决天然不漂移（LLM 裁决轮间非确定，整稿复审会翻判——p05 实测 round1 通过的 3 条在 round2 翻判，净效果驳回 2 条变 4 条，改日志模型后同画像幻觉率 6.6%→0%）；超限放行——裁决已落 review_history，幻觉率指标照常可复算。teach_delivered 事件携带按论断取最新的当前裁决（旧轮被驳回论断已由改写版覆盖）；
 - **重教去重**：重教轮 `taught_previously`（此前各轮已教论断全文）注入 generate——禁止复读，重教必须给增量（错因应用/换角度深化/未覆盖细节），防每轮 60% 重复的复读机；
 - LLM 输出截断防护：`core/llm.py` 检查 finish_reason=length 显式抛 `LLMOutputError`（JSON 必然残缺，不做无意义重试）；
 - 知识条目必带 `knowledge_type`（`memory` 事实/定义/术语 / `concept` 概念与关系 / `procedure` 步骤技能，枚举在 `scripts/init_db.py.KnowledgeType`，DB 列 DEFAULT 'concept'），描述知识本体（影响教学方式/门槛/复习节奏），不绑定题型，core/plan.KnowledgeEntry 同持此字段（默认 concept）；
@@ -160,10 +160,11 @@ diagnose（LLM 一次，输出 gap_ids）→ plan（确定性切片：ID 投影 
 ### 3.7 会话层（W1 已上线）
 
 - **进度从历史推导**：reached_answer / scaffold_pending / retry_context 全部由 `topic_rounds` + `mastery_snapshots` 历史计算（`teach_loop.TopicProgress`），无内存会话态——任何进程重启后从 DB 续跑（api 无状态的前提）；
-- **Web 端点补充**（W2）：`GET /api/sessions`（列表，回放入口）；`GET /{id}/stream?after_seq=`（实时 SSE 订阅：先 subscribe 再补读历史、按 seq 去重，裁判面跟随另一 tab）；`GET /{id}/replay?format=json`（带 seq 的 JSON 数组，播放器步进用）；`POST /{id}/end`（session_end 收口）；`GET /{id}/topics/{entry}/state`（needs_teaching/scaffold_pending/prereq_id——Web 工作台镜像 CLI 状态机与刷新恢复的依据）；`GET /{id}/exports`（条目化导出产物，知识库同构条目，未导出时空数组）；`DELETE /{id}?keep_packages&keep_exports`（删会话与过程数据，产物可额外保留为孤儿行）；`GET /api/resources`（跨会话聚合资源库，`?session_id&entry_id` 筛选，/resources 页面数据源）；
+- **Web 端点补充**（W2）：`GET /api/sessions`（列表，回放入口）；`GET /{id}/stream?after_seq=`（实时 SSE 订阅：先 subscribe 再补读历史、按 seq 去重，裁判面跟随另一 tab）；`GET /{id}/replay?format=json`（带 seq 的 JSON 数组，播放器步进用）；`POST /{id}/end`（session_end 收口）；`GET /{id}/topics/{entry}/state`（needs_teaching/scaffold_pending/followup_pending/prereq_id——Web 工作台镜像 CLI 状态机与刷新恢复的依据）；`POST /{id}/topics/{entry}/followup` + `POST /{id}/topics/{entry}/followup/answer`（动态追问：判定+确认题生成 / 确认题判分）；`GET /{id}/exports`（条目化导出产物，知识库同构条目，未导出时空数组）；`POST /{id}/export`（主动触发条目化导出，含误区提炼）+ `GET /{id}/export/download`（同构 jsonl 下载，已删会话的孤儿产物亦可下载）；`DELETE /{id}?keep_packages&keep_exports`（删会话与过程数据，产物可额外保留为孤儿行）；`GET /api/resources`（跨会话聚合资源库，`?session_id&entry_id` 筛选，/resources 页面数据源）；
 - **事件流一表三用**：`session_events`（seq 会话内单调 + payload 自包含）同时服务裁判面渲染、回放演示、审计日志；实时 = emit 写库 + 进程内订阅推送，回放 = 按 seq 读表，前端渲染代码复用；
-- **事件协议**：session_start / diagnose_done / plan_done / topic_start / retrieve_done / generate_done / review_done / teach_delivered / question_built / answer_graded / scaffold_offered / topic_advance / topic_regress / package_saved / packages_exported / session_end（+error）——payload 字段见架构文档 §4；
+- **事件协议**：session_start / diagnose_done / plan_done / topic_start / retrieve_done / generate_done / review_done / teach_delivered / question_built / answer_graded / scaffold_offered / followup_asked / followup_offered / followup_graded / topic_advance / topic_regress / package_saved / packages_exported / session_end（+error）——payload 字段见架构文档 §4；
 - **教学轮生命周期**：next_question 落 pending 轮（幂等，web 刷新安全）→ handle_answer 填充 answer/grade/decision → 重教时 delete_pending_rounds 作废；
+- **动态追问（侧车轮）**：追问轮 = topic_rounds 侧车轮（question_id 以 `_followup` 结尾、decision='followup'），与错题→脚手架同构（有效疑问→确认型选择题）；不写掌握度快照（澄清工具非测评），`main_rounds` 过滤后题型阶梯/降维/错因推导不受影响；新提问替换旧未作答确认题，重教时随 delete_pending_rounds 作废；已答追问轮进分阶题归档，干扰项作误区提炼原料（与脚手架同源）；导出管线在 `core/export_pipeline.py`（脚本为薄壳，Web 触发端点复用同一管线）；
 - **资源包 upsert 合并**：UNIQUE(session_id, entry_id)；讲义跨轮追加合并，题目按 question_id 去重（重教重生成覆盖旧版），practice/challenge 用 COALESCE 保留旧值；
 - **脚手架决策收口**：脚手架答对不写掌握度快照，决策从计数历史重算（防洗白降维计数/防虚高 advance）——落在 teach_loop.handle_answer；
 - **SSE 契约**：帧 = `event: <type>\ndata: <json>\n\n`（api/sse.py 编码，实时与回放同构）；LLM 失败以 error 事件透出，不静默断流；

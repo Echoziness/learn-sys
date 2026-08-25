@@ -28,9 +28,11 @@ from core.agents.question import (
     ChoiceQuestionOutput,
     QuestionInput,
     choice_node,
+    followup_node,
     question_node,
     scaffold_node,
 )
+from core.agents.review import latest_verdicts
 from core.answer_pipeline import AnswerOutcome, process_answer
 from core.assess import Question, build_question
 from core.config import Settings
@@ -87,8 +89,21 @@ class TopicProgress:
     correctness: list[bool] = field(default_factory=list)
 
     @property
+    def main_rounds(self) -> list[dict[str, Any]]:
+        """主教学轮（排除追问侧车轮）——题型阶梯/脚手架/错因等全部推导基于此。
+
+        追问轮（question_id 以 _followup 结尾）是澄清工具侧车：不推进题型、
+        不影响错因/降维信号；但占用 round_no 号段（next_round_no 含它）。
+        """
+        return [
+            r
+            for r in self.rounds
+            if not str((r.get("question") or {}).get("question_id", "")).endswith("_followup")
+        ]
+
+    @property
     def answered(self) -> list[dict[str, Any]]:
-        return [r for r in self.rounds if r.get("answer") is not None]
+        return [r for r in self.main_rounds if r.get("answer") is not None]
 
     @property
     def last_round(self) -> dict[str, Any] | None:
@@ -227,6 +242,26 @@ class RoundResult:
     mastery: float
 
 
+@dataclass
+class FollowupResult:
+    """一次追问处理的结果：无效则只有判定理由，有效则携带确认题。"""
+
+    valid: bool
+    reason: str
+    round_no: int
+    question: Question | None = None
+
+
+@dataclass
+class FollowupGradeResult:
+    """追问确认题作答结果（不写掌握度：澄清工具非测评证据）。"""
+
+    is_correct: bool
+    evaluation: str
+    correct_label: str
+    round_no: int
+
+
 class TeachLoop:
     """编排原语集合。一个实例可服务多个会话（状态全在 DB）。"""
 
@@ -350,21 +385,22 @@ class TeachLoop:
             state["taught_previously"] = self._taught_previously(ctx.session_id, entry_id)
 
         final: dict[str, Any] = {}
+        review_log: list[ReviewNote] = []  # append-only 裁决日志累积（供事件与最终裁决）
         async for update in self._graph.astream(state, stream_mode="updates"):
             for node, out in update.items():
                 if not isinstance(out, dict):
                     continue
                 final.update(out)
-                await self._emit_node_event(ctx.session_id, entry_id, round_no, node, out)
+                review_log.extend(out.get("review_history", []))
+                await self._emit_node_event(ctx.session_id, entry_id, round_no, node, out, review_log)
 
         claims: list[DraftClaim] = final.get("draft", [])
-        # 审核回流后 review_history 是多轮累积——只取最新一轮裁决
-        # （旧轮已被打回重写，其 unsupported 不再计入展示与事件）
-        all_reviews: list[ReviewNote] = final.get("review_history", [])
-        reviews = all_reviews[-len(claims):] if claims else []
+        # 当前裁决按论断取日志最新一条（旧轮被驳回的论断已由改写版裁决覆盖）
+        current = latest_verdicts(review_log)
         verdicts = {
-            str(n.claim_index): n.verdict
-            for n in reviews
+            str(c.claim_index): current[c.claim_index].verdict
+            for c in claims
+            if c.claim_index in current
         }
         await self._store.emit(
             ctx.session_id,
@@ -389,11 +425,17 @@ class TeachLoop:
             round_no=round_no,
             is_retry=is_retry,
             claims=claims,
-            reviews=reviews,
+            reviews=[current[c.claim_index] for c in claims if c.claim_index in current],
         )
 
     async def _emit_node_event(
-        self, session_id: str, entry_id: str, round_no: int, node: str, out: dict[str, Any]
+        self,
+        session_id: str,
+        entry_id: str,
+        round_no: int,
+        node: str,
+        out: dict[str, Any],
+        review_log: list[ReviewNote] | None = None,
     ) -> None:
         """子图节点完成事件（裁判面的调度可视化数据）。"""
         if node == "retrieve":
@@ -423,7 +465,8 @@ class TeachLoop:
                 },
             )
         elif node == "review":
-            notes = out.get("review_history", [])
+            # 裁决日志按论断取最新一条——事件展示当前全稿裁决（含上轮未复审的论断）
+            notes = sorted(latest_verdicts(review_log or []).values(), key=lambda n: n.claim_index)
             await self._store.emit(
                 session_id,
                 "review_done",
@@ -684,6 +727,152 @@ class TeachLoop:
             expected_label="A",
         )
 
+    # ---------- 动态追问（与错题→脚手架同构的澄清管线，2026-08-26） ----------
+
+    def pending_followup(self, session_id: str, entry_id: str) -> dict[str, Any] | None:
+        """未作答的追问侧车轮（前端刷新恢复与作答入口）。"""
+        for r in reversed(self._store.load_rounds(session_id, entry_id)):
+            if r.get("answer") is None and r.get("decision") == "followup":
+                return r
+        return None
+
+    async def handle_followup(
+        self, ctx: SessionContext, entry_id: str, question_text: str
+    ) -> FollowupResult:
+        """学生追问：LLM 判定是否真实有效疑问 → 有效则走脚手架管线生成确认题。
+
+        与错题→脚手架同构：确认题落 topic_rounds 侧车轮（decision='followup'），
+        作答后由 archive_questions 天然收进分阶题（题目资源化衔接）。
+        新提问替换旧未作答确认题；主教学轮的 pending 题目不受影响。
+        """
+        entry = ctx.entry(entry_id)
+        self._store.delete_pending_followup(ctx.session_id, entry_id)
+        round_no = self.progress(ctx.session_id, entry_id).next_round_no
+
+        judgement = await followup_node(
+            {
+                "entry": {
+                    "id": entry.id,
+                    "title": entry.title,
+                    "content": entry.content,
+                    "keywords": entry.keywords,
+                },
+                "taught_claims": self._all_taught_claims(ctx.session_id, entry.id),
+                "student_question": question_text,
+            },
+            provider=self._provider,
+            model=self._settings.question_model,
+        )
+        await self._store.emit(
+            ctx.session_id,
+            "followup_asked",
+            {
+                "entry_id": entry_id,
+                "round_no": round_no,
+                "student_question": question_text,
+                "valid": judgement.valid,
+                "reason": judgement.reason,
+            },
+        )
+        if not judgement.valid or judgement.scaffold is None:
+            return FollowupResult(valid=False, reason=judgement.reason, round_no=round_no)
+
+        s = judgement.scaffold
+        options = tuple(
+            f"{label}. {text}"
+            for label, text in zip("ABCD", [s.correct, *s.distractors], strict=False)
+        )
+        question = Question(
+            question_id=f"q_{entry.id}_r{round_no}_followup",
+            entry_id=entry.id,
+            prompt=s.question,
+            question_type="choice",
+            expected_keywords=(),
+            options=options,
+            expected_label="A",  # 澄清工具非测评，正确项固定 A 位（同脚手架）
+        )
+        self._store.save_round(
+            ctx.session_id,
+            entry_id=entry_id,
+            round_no=round_no,
+            question=self._question_record(question),
+            expected=[],
+            answer=None,
+            grade=None,
+            decision="followup",
+            mastery_after=None,
+        )
+        await self._store.emit(
+            ctx.session_id,
+            "followup_offered",
+            {
+                "entry_id": entry_id,
+                "round_no": round_no,
+                "question_id": question.question_id,
+                "prompt": question.prompt,
+                "options": list(question.options),
+            },
+        )
+        return FollowupResult(valid=True, reason=judgement.reason, round_no=round_no, question=question)
+
+    async def answer_followup(
+        self, ctx: SessionContext, entry_id: str, answer: str
+    ) -> FollowupGradeResult:
+        """追问确认题作答：复用作答管线判分，不写掌握度快照。
+
+        澄清工具不是测评证据：正确性不进 mastery 历史，题型阶梯/降维计数不受影响。
+        """
+        pending = self.pending_followup(ctx.session_id, entry_id)
+        if pending is None:
+            raise KeyError("当前无待作答的追问确认题")
+        question = self.question_from_record(pending)
+        round_no = int(pending["round_no"])
+
+        correctness = self._store.load_mastery_history(ctx.session_id, entry_id)
+        outcome = await process_answer(
+            self._provider,
+            question,
+            answer,
+            correctness,
+            model=self._settings.feedback_model,
+        )
+        grade = {
+            "is_correct": outcome.is_correct,
+            "verdict": "correct" if outcome.is_correct else "partial",
+            "coverage": round(outcome.grade.keyword_coverage, 3),
+            "evaluation": outcome.evaluation,
+            "llm_reviewed": outcome.llm_reviewed,
+            "missed_requirements": list(outcome.missed_requirements),
+        }
+        # mastery_after 记录当前掌握度快照值（未变，仅供行内字段完备）
+        self._store.update_round_answer(
+            ctx.session_id,
+            entry_id,
+            round_no,
+            answer=answer,
+            grade=grade,
+            decision="followup",
+            mastery_after=compute_mastery(correctness),
+        )
+        await self._store.emit(
+            ctx.session_id,
+            "followup_graded",
+            {
+                "entry_id": entry_id,
+                "round_no": round_no,
+                "question_id": question.question_id,
+                "is_correct": outcome.is_correct,
+                "correct_label": question.expected_label,
+                "evaluation": outcome.evaluation,
+            },
+        )
+        return FollowupGradeResult(
+            is_correct=outcome.is_correct,
+            evaluation=outcome.evaluation,
+            correct_label=question.expected_label,
+            round_no=round_no,
+        )
+
     def _all_taught_claims(self, session_id: str, entry_id: str) -> list[dict[str, Any]]:
         """深度契约输入：该条目**全部轮次**教学论断的累积（带 claim_type，D2 可重建）。
 
@@ -728,7 +917,15 @@ class TeachLoop:
         )
         is_scaffold = question.question_id.endswith("_scaffold")
         rounds = self._store.load_rounds(ctx.session_id, entry_id)
-        round_no = max((r["round_no"] for r in rounds), default=1)
+        # 主轮过滤：追问侧车轮占用号段，不过滤会让 update_round_answer 错位到追问行
+        round_no = max(
+            (
+                r["round_no"]
+                for r in rounds
+                if not str((r.get("question") or {}).get("question_id", "")).endswith("_followup")
+            ),
+            default=1,
+        )
 
         # 脚手架答对不计入掌握度历史 → 决策也必须从"计数历史"推导
         # （防脚手架洗白连续错降维计数、防虚高 mastery 触发 advance）
@@ -964,4 +1161,12 @@ class TeachLoop:
         self._store.finish_session(ctx.session_id, status=status)
 
 
-__all__ = ["RoundResult", "SessionContext", "TeachLoop", "TeachResult", "TopicProgress"]
+__all__ = [
+    "FollowupGradeResult",
+    "FollowupResult",
+    "RoundResult",
+    "SessionContext",
+    "TeachLoop",
+    "TeachResult",
+    "TopicProgress",
+]

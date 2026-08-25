@@ -1,6 +1,13 @@
-"""审核合并逻辑：每条论断恰好一条裁决，规则层优先，漏判 fail-closed，索引越界丢弃。"""
+"""审核合并逻辑：每条论断恰好一条裁决，规则层优先，漏判 fail-closed，索引越界丢弃；
+裁决日志模型：论断的当前裁决 = 日志中该论断最新一条（后写覆盖先写）。"""
 
-from core.agents.review import build_feedback, merge_verdicts, rule_check
+from core.agents.review import (
+    build_feedback,
+    build_rejected_claims,
+    latest_verdicts,
+    merge_verdicts,
+    rule_check,
+)
 from core.state import DraftClaim, RetrievedEntry, ReviewNote
 
 
@@ -49,3 +56,40 @@ def test_build_feedback_only_contains_issues():
     assert "unsupported" in feedback
     assert "claim_index" in feedback
     assert build_feedback([notes[0]]) == ""
+
+
+def test_build_rejected_claims_only_unsupported_with_text():
+    """定向改写通道：只收 unsupported（partially 不触发改写），携带原文与理由。"""
+    draft = [
+        DraftClaim(claim_index=1, text="通过的论断", evidence_ids=["E1"]),
+        DraftClaim(claim_index=2, text="被驳回的论断", evidence_ids=["E1"]),
+        DraftClaim(claim_index=3, text="过度延伸的论断", evidence_ids=["E1"]),
+    ]
+    notes = [
+        ReviewNote(claim_index=1, verdict="supported", reason="ok"),
+        ReviewNote(claim_index=2, verdict="unsupported", reason="编造", suggestion="删除"),
+        ReviewNote(claim_index=3, verdict="partially_supported", reason="常识引申"),
+    ]
+    rejected = build_rejected_claims(draft, notes)
+    assert len(rejected) == 1
+    assert rejected[0]["claim_index"] == 2
+    assert rejected[0]["text"] == "被驳回的论断"
+    assert rejected[0]["reason"] == "编造"
+    assert rejected[0]["suggestion"] == "删除"
+
+
+def test_latest_verdicts_last_write_wins():
+    """裁决属于论断不属于轮：同论断取日志最新一条，其余论断各自保留。"""
+    history = [
+        ReviewNote(claim_index=1, verdict="supported", reason="首轮通过"),
+        ReviewNote(claim_index=2, verdict="unsupported", reason="首轮驳回"),
+        ReviewNote(claim_index=2, verdict="supported", reason="改写后通过"),
+    ]
+    latest = latest_verdicts(history)
+    assert latest[1].verdict == "supported"
+    assert latest[2].verdict == "supported"
+    assert latest[2].reason == "改写后通过"
+
+
+def test_latest_verdicts_empty():
+    assert latest_verdicts([]) == {}

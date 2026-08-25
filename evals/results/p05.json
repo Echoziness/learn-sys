@@ -3,27 +3,27 @@
   "name": "本科大四·电子信息",
   "expect_level": "advanced",
   "diagnosed_level": "intermediate",
-  "session_id": "d9be1ab7380144c597f78eb149f705d9",
-  "hallucination_rate": 0.1609,
-  "claims_total": 87,
+  "session_id": "8ed2840aa33045eb8c38d5587f9dd6d5",
+  "hallucination_rate": 0.0,
+  "claims_total": 80,
   "tier_match": {
-    "rate": 0.75,
-    "matched": 3,
-    "total": 4
+    "rate": 1.0,
+    "matched": 5,
+    "total": 5
   },
   "keyword_coverage": {
     "rate": 1.0,
-    "hit": 21,
-    "total": 21
+    "hit": 25,
+    "total": 25
   },
-  "topics_advanced": 4,
-  "mastery_mean": 0.7536,
+  "topics_advanced": 5,
+  "mastery_mean": 0.7768,
   "masteries": {
     "关系型数据库基本概念": 0.661,
-    "SELECT 基础查询": 0.661,
-    "JOIN 表连接": 0.8,
+    "SELECT 基础查询": 0.8,
     "ORDER BY 与 LIMIT": 0.8,
-    "WHERE 条件过滤": 0.8,
-    "聚合函数与 GROUP BY": 0.8
+    "聚合函数与 GROUP BY": 0.8,
+    "JOIN 表连接": 0.8,
+    "WHERE 条件过滤": 0.8
   }
 }
