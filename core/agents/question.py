@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import dataclass
 from typing import Any, TypedDict
 
 from pydantic import BaseModel, Field
@@ -301,6 +302,111 @@ async def scaffold_node(
     return validate_scaffold(output, entry, claims)
 
 
+FOLLOWUP_PROMPT = """学生在学习过程中主动提出了一个疑问。请先判断它是否是与本主题相关的
+真实学习疑问，如果是，再为这个疑问点设计一道确认型选择题，让学生通过选项确认自己
+真的理解了澄清后的内容（与错题脚手架同构：澄清工具，不是测评）。
+
+【知识条目】
+{entry}
+
+【本轮教学论断】（澄清与正确选项的内容边界，不得引入之外的新概念）
+{claims}
+
+【学生的提问】{student_question}
+
+判断标准（is_valid）：
+- true：疑问与本条目概念或本轮教学内容相关，是一个真实的知识性疑问；
+- false：寒暄/闲聊、与本主题完全无关、空泛到无法回应（如"太难了怎么办"）、
+  或只是复述题干没有疑问。拿不准时判 false（fail-closed）。
+
+is_valid=true 时同时生成三件套：
+1. question：确认型选择题题干——直接针对学生的疑问点提问（15-60 字）。
+2. correct：正确选项——一句完整、自洽的陈述（8-60 字），基于条目与教学论断
+   正面回应学生的疑问，学生读后能确认正确理解。
+3. distractors：2-3 个干扰项，每项为一句完整陈述（8-60 字）：
+   - 围绕该疑问点的常见误解（不得与正确项意思相同，选项间不得互相重复）。
+
+严格按 JSON 输出：
+{{"is_valid": true, "reason": "判断依据（一句话）",
+ "question": "...", "correct": "...", "distractors": ["...", "..."]}}
+is_valid=false 时后三个字段留空字符串/空数组。"""
+
+
+class FollowupOutput(BaseModel):
+    """追问一次调用输出：有效性判定 + 确认题三件套（valid 时填充）。"""
+
+    is_valid: bool = Field(description="是否为与本主题相关的真实学习疑问")
+    reason: str = Field(default="", description="判断依据（一句话）")
+    question: str = Field(default="", description="确认型选择题题干")
+    correct: str = Field(default="", description="正确选项（正面回应疑问的完整陈述）")
+    distractors: list[str] = Field(
+        default_factory=list, description="干扰项（该疑问点的常见误解）"
+    )
+
+
+@dataclass(frozen=True)
+class FollowupJudgement:
+    """追问判定结果：无效即终止；有效时携带校验通过的脚手架同构三件套。"""
+
+    valid: bool
+    reason: str
+    scaffold: ScaffoldOutput | None = None
+
+
+async def followup_node(
+    state: dict[str, Any],
+    *,
+    provider: LLMProvider,
+    model: str | None = None,
+) -> FollowupJudgement:
+    """动态追问判定 + 生成：LLM 一次调用判定疑问有效性，有效则生成确认题三件套。
+
+    与错题脚手架同构（复用 validate_scaffold 的来源可溯校验）。fail-closed：
+    LLM 异常或三件套校验不过 → 判无效（学生收到判定理由，不进澄清管线）。
+    """
+    entry = state.get("entry") or {}
+    claims = state.get("taught_claims", [])
+    try:
+        output = await provider.chat_validated(
+            [
+                {
+                    "role": "user",
+                    "content": FOLLOWUP_PROMPT.format(
+                        entry=json.dumps(
+                            {
+                                "id": entry.get("id"),
+                                "title": entry.get("title"),
+                                "content": entry.get("content"),
+                                "keywords": entry.get("keywords", []),
+                            },
+                            ensure_ascii=False,
+                            indent=2,
+                        ),
+                        claims=_format_claims(claims),
+                        student_question=state.get("student_question", ""),
+                    ),
+                }
+            ],
+            schema=FollowupOutput,
+            model=model,
+            temperature=0.2,
+        )
+    except Exception:
+        return FollowupJudgement(False, "追问判定失败，请换个问法再试", None)
+    if not output.is_valid:
+        return FollowupJudgement(False, output.reason.strip() or "与当前学习内容无关", None)
+    scaffold = validate_scaffold(
+        ScaffoldOutput(
+            question=output.question, correct=output.correct, distractors=output.distractors
+        ),
+        entry,
+        claims,
+    )
+    if scaffold is None:
+        return FollowupJudgement(False, "追问判定失败，请换个问法再试", None)
+    return FollowupJudgement(True, output.reason.strip(), scaffold)
+
+
 CHOICE_PROMPT = """你是培训讲师，刚给学生讲完一个知识点，现在出一道概念辨析选择题
 检验学生是否真的理解了（而不是记住了几个词）。
 
@@ -483,6 +589,8 @@ async def question_node(
 
 __all__ = [
     "ChoiceQuestionOutput",
+    "FollowupJudgement",
+    "FollowupOutput",
     "QuestionOutput",
     "ScaffoldOutput",
     "validate_expected_keywords",
@@ -490,6 +598,7 @@ __all__ = [
     "validate_scaffold",
     "validate_choice_question",
     "choice_node",
+    "followup_node",
     "scaffold_node",
     "question_node",
 ]

@@ -10,10 +10,11 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import type { AggregatedExportEntry, AggregatedPackage } from "@/lib/types";
 import { ExportedEntryList, PackageBrowser } from "@/components/shared/resource-views";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -50,6 +51,9 @@ function SessionMeta({
 export default function ResourcesPage() {
   const [sessionFilter, setSessionFilter] = useState("all");
   const [entryFilter, setEntryFilter] = useState("");
+  // 资源包嵌套 Tabs 渲染成本高（95 包×多 tab），默认收起 + 分块展开避免主线程阻塞
+  const [packagesExpanded, setPackagesExpanded] = useState(false);
+  const [packagesVisible, setPackagesVisible] = useState(10);
 
   const sessions = useQuery({ queryKey: ["sessions"], queryFn: () => api.listSessions(200) });
   const library = useQuery({
@@ -160,13 +164,35 @@ export default function ResourcesPage() {
               <TabsContent value="packages" className="space-y-3 pt-3">
                 {library.data.packages.length === 0 ? (
                   <p className="p-6 text-center text-sm text-muted-foreground">暂无资源包</p>
+                ) : !packagesExpanded ? (
+                  <div className="space-y-2 p-2">
+                    <p className="text-xs text-muted-foreground">
+                      共 {library.data.packages.length} 个资源包（每个含讲义/分阶题等多形态嵌套视图，展开渲染较重）。
+                    </p>
+                    <Button size="sm" onClick={() => setPackagesExpanded(true)}>
+                      展开资源包列表
+                    </Button>
+                  </div>
                 ) : (
-                  library.data.packages.map((p) => (
-                    <div key={`${p.session_id}-${p.entry_id}`}>
-                      <SessionMeta sessionId={p.session_id} learnerId={p.learner_id} status={p.session_status} />
-                      <PackageBrowser packages={[p as AggregatedPackage]} />
-                    </div>
-                  ))
+                  <>
+                    {library.data.packages.slice(0, packagesVisible).map((p) => (
+                      <div key={`${p.session_id}-${p.entry_id}`}>
+                        <SessionMeta sessionId={p.session_id} learnerId={p.learner_id} status={p.session_status} />
+                        <PackageBrowser packages={[p as AggregatedPackage]} />
+                      </div>
+                    ))}
+                    {packagesVisible < library.data.packages.length && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full"
+                        onClick={() => setPackagesVisible((v) => v + 10)}
+                      >
+                        加载更多（已显示 {Math.min(packagesVisible, library.data.packages.length)}/
+                        {library.data.packages.length}）
+                      </Button>
+                    )}
+                  </>
                 )}
               </TabsContent>
               <TabsContent value="exports" className="space-y-3 pt-3">
@@ -177,11 +203,20 @@ export default function ResourcesPage() {
                 ) : (
                   [...groupExports(library.data.exports).entries()].map(([sid, entries]) => (
                     <div key={sid}>
-                      <SessionMeta
-                        sessionId={sid}
-                        learnerId={entries[0]?.learner_id}
-                        status={entries[0]?.session_status ?? null}
-                      />
+                      <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+                        <SessionMeta
+                          sessionId={sid}
+                          learnerId={entries[0]?.learner_id}
+                          status={entries[0]?.session_status ?? null}
+                        />
+                        <a
+                          href={api.exportDownloadUrl(sid)}
+                          download
+                          className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+                        >
+                          下载 entries.jsonl
+                        </a>
+                      </div>
                       <ExportedEntryList entries={entries} />
                     </div>
                   ))

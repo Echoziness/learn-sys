@@ -11,7 +11,7 @@ from collections.abc import AsyncIterator
 
 import structlog
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import PlainTextResponse, StreamingResponse
 
 from api.models import (
     AggregatedExportEntryOut,
@@ -21,13 +21,18 @@ from api.models import (
     CreateSessionResponse,
     DeleteSessionOut,
     ExportedEntryOut,
+    FollowupAnswerOut,
+    FollowupAskOut,
+    FollowupRequest,
     PlanTopicOut,
     ResourcesAggregateOut,
     SessionListItemOut,
 )
 from api.sse import sse_frame
+from core.export_pipeline import ExportValidationError, export_to_jsonl, run_export
 from core.mastery import compute_mastery
-from core.state import LearnerProfile
+from core.state import DraftClaim, LearnerProfile, ReviewNote
+from evals.metrics import hallucination_rate, keyword_coverage, tier_match_rate
 
 logger = structlog.get_logger()
 
@@ -166,6 +171,54 @@ async def answer(session_id: str, req: AnswerRequest, request: Request):
     }
 
 
+@router.post("/{session_id}/topics/{entry_id}/followup", response_model=FollowupAskOut)
+async def followup_ask(
+    session_id: str, entry_id: str, req: FollowupRequest, request: Request
+):
+    """动态追问：判定学生提问是否真实有效 → 有效则走脚手架同构管线生成确认题。"""
+    store, loop = _deps(request)
+    _session_or_404(store, session_id)
+    ctx = loop.rebuild_context(session_id)
+    try:
+        result = await loop.handle_followup(ctx, entry_id, req.question)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(502, f"追问判定失败: {str(exc)[:200]}") from exc
+    return FollowupAskOut(
+        valid=result.valid,
+        reason=result.reason,
+        round_no=result.round_no,
+        question_id=result.question.question_id if result.question else None,
+        prompt=result.question.prompt if result.question else None,
+        options=list(result.question.options) if result.question else [],
+    )
+
+
+@router.post(
+    "/{session_id}/topics/{entry_id}/followup/answer", response_model=FollowupAnswerOut
+)
+async def followup_answer(
+    session_id: str, entry_id: str, req: AnswerRequest, request: Request
+):
+    """追问确认题作答：不写掌握度（澄清工具非测评证据）。"""
+    store, loop = _deps(request)
+    _session_or_404(store, session_id)
+    ctx = loop.rebuild_context(session_id)
+    try:
+        result = await loop.answer_followup(ctx, entry_id, req.answer)
+    except KeyError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(502, f"追问判分失败: {str(exc)[:200]}") from exc
+    return FollowupAnswerOut(
+        is_correct=result.is_correct,
+        evaluation=result.evaluation,
+        correct_label=result.correct_label,
+        round_no=result.round_no,
+    )
+
+
 @router.get("/{session_id}/report")
 async def report(session_id: str, request: Request):
     store, loop = _deps(request)
@@ -179,6 +232,31 @@ async def report(session_id: str, request: Request):
     for snap in store.load_mastery_report(session_id):
         by_entry.setdefault(snap["entry_id"], []).append(snap["correctness"])
     packages = store.load_packages(session_id)
+    events = store.load_events(session_id)
+
+    # 三指标口径全部走 evals/metrics.py SSOT（与批量评测 evals/run.py 同源）：
+    # 幻觉率从 teach_delivered 事件的 claims+verdicts 聚合（最终轮裁决）——
+    # claim_index 是事件内局部编号，聚合时 claims 与 verdicts 必须同步偏移。
+    drafts: list[DraftClaim] = []
+    reviews: list[ReviewNote] = []
+    for ev in events:
+        if ev.event_type != "teach_delivered":
+            continue
+        base = len(drafts)
+        for c in ev.payload.get("claims", []):
+            drafts.append(
+                DraftClaim(
+                    claim_index=base + int(c["claim_index"]),
+                    text=c["text"],
+                    evidence_ids=c.get("evidence_ids", ["?"]),
+                    claim_type=c.get("claim_type", "core"),
+                )
+            )
+        for i, verdict in ev.payload.get("verdicts", {}).items():
+            reviews.append(ReviewNote(claim_index=base + int(i), verdict=verdict, reason="报告聚合"))
+    keywords = {e.id: e.keywords for e in entries if e.id in {p["entry_id"] for p in packages}}
+    tier_rate, tier_matched, tier_total = tier_match_rate(packages)
+    cov_rate, cov_hit, cov_total = keyword_coverage(packages, keywords)
     return {
         "session_id": session_id,
         "difficulty_level": session["difficulty_level"],
@@ -192,18 +270,28 @@ async def report(session_id: str, request: Request):
             }
             for eid, history in by_entry.items()
         ],
-        # 难度匹配：资源包难度层级与诊断层级的匹配率
-        "tier_match": {
-            "matched": sum(
-                1 for p in packages if not str(p["difficulty_tier"]).startswith("capped:")
-            ),
-            "total": len(packages),
+        # 难度匹配：资源包难度层级与诊断层级（容忍带内非 capped 即适配）
+        "tier_match": {"matched": tier_matched, "total": tier_total},
+        # 逐包层级明细（报告页徽章展示用）
+        "tiers": [
+            {
+                "entry_id": p["entry_id"],
+                "title": title_by_id.get(p["entry_id"], p["entry_id"]),
+                "tier": str(p["difficulty_tier"]),
+                "matched": not str(p["difficulty_tier"]).startswith("capped:"),
+            }
+            for p in packages
+        ],
+        # 赛题三指标总览（与 evals/run.py 逐组结果同口径）
+        "metrics": {
+            "hallucination_rate": round(hallucination_rate(drafts, reviews), 4),
+            "claims_total": len(drafts),
+            "tier_match": {"rate": round(tier_rate, 4), "matched": tier_matched, "total": tier_total},
+            "keyword_coverage": {"rate": round(cov_rate, 4), "hit": cov_hit, "total": cov_total},
         },
         # 路径图：切片 + 回归回边
         "path": session["plan"].get("topics", []),
-        "regressions": [
-            e.payload for e in store.load_events(session_id) if e.event_type == "topic_regress"
-        ],
+        "regressions": [e.payload for e in events if e.event_type == "topic_regress"],
     }
 
 
@@ -216,10 +304,68 @@ async def resources(session_id: str, request: Request):
 
 @router.get("/{session_id}/exports", response_model=list[ExportedEntryOut])
 async def exports(session_id: str, request: Request):
-    """条目化导出产物（知识库同构条目，FR-23）——由 export_packages 脚本产出后落库。"""
+    """条目化导出产物（知识库同构条目，FR-23）——由导出管线产出后落库。"""
     store, _ = _deps(request)
     _session_or_404(store, session_id)
     return store.load_export_entries(session_id)
+
+
+@router.post("/{session_id}/export")
+async def export_packages(session_id: str, request: Request):
+    """主动触发资源包条目化导出（Web 入口）：收集 → distill 提炼 → 自检 → 落库 → 事件。"""
+    store, _ = _deps(request)
+    session = store.get_session(session_id)
+    if session is None:
+        raise HTTPException(404, "会话不存在")
+    provider = getattr(request.app.state, "provider", None)
+    settings = getattr(request.app.state, "settings", None)
+    if provider is None or settings is None:
+        raise HTTPException(503, "服务装配中，请稍候重试")
+    if not store.load_packages(session_id):
+        raise HTTPException(409, "会话暂无资源包可导出（请先完成至少一个主题的教学）")
+    try:
+        exported = await run_export(
+            store,
+            session,
+            request.app.state.entries,
+            provider=provider,
+            model=settings.generate_model,
+        )
+    except ExportValidationError as exc:
+        raise HTTPException(502, f"导出自检失败: {'; '.join(exc.errors)[:300]}") from exc
+    except Exception as exc:
+        raise HTTPException(502, f"导出失败: {str(exc)[:200]}") from exc
+    logger.info("export_triggered", session_id=session_id, count=len(exported))
+    return {
+        "session_id": session_id,
+        "count": len(exported),
+        "entry_ids": [item["id"] for item in exported],
+    }
+
+
+@router.get("/{session_id}/export/download")
+async def export_download(session_id: str, request: Request):
+    """下载导出文件（entries.jsonl 同构，可被 init_db 原样入库）。
+
+    会话已删但产物保留（keep_exports）时仍可下载——资源库页孤儿来源依赖此行为。
+    """
+    store, _ = _deps(request)
+    stored = store.load_export_entries(session_id)
+    if not stored:
+        raise HTTPException(409, "尚无导出条目，请先触发导出")
+    # 落库形态含溯源/时间戳字段，下载文件只留 SeedEntry 同构字段（与 CLI 导出同构）
+    items = [
+        {k: v for k, v in e.items() if k not in ("source_entry_id", "exported_at")}
+        for e in stored
+    ]
+    session = store.get_session(session_id)
+    learner = session["learner_id"] if session else "deleted"
+    filename = f"entries-{learner}-{session_id[:8]}.jsonl"
+    return PlainTextResponse(
+        export_to_jsonl(items),
+        media_type="application/x-ndjson; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.delete("/{session_id}", response_model=DeleteSessionOut)
@@ -357,6 +503,18 @@ async def topic_state(session_id: str, entry_id: str, request: Request):
     except KeyError:
         prereq_id = None
         title = entry_id
+    # 未作答的追问确认题（刷新恢复：前端据此重绘追问区）
+    pending_followup = loop.pending_followup(session_id, entry_id)
+    followup_question = (
+        {
+            "question_id": pending_followup["question"]["question_id"],
+            "prompt": pending_followup["question"]["prompt"],
+            "options": pending_followup["question"].get("options", []),
+            "round_no": pending_followup["round_no"],
+        }
+        if pending_followup and pending_followup.get("question")
+        else None
+    )
     return {
         "entry_id": entry_id,
         "title": title,
@@ -365,4 +523,5 @@ async def topic_state(session_id: str, entry_id: str, request: Request):
         "scaffold_pending": progress.scaffold_pending,
         "prereq_id": prereq_id,
         "has_answered": progress.last_round is not None,
+        "followup_pending": followup_question,
     }

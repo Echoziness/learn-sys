@@ -52,6 +52,19 @@ export const api = {
       entry_id: entryId,
       answer,
     }),
+  askFollowup: (id: string, entryId: string, question: string) =>
+    postJson<import("@/lib/types").FollowupAskResponse>(
+      `/api/sessions/${id}/topics/${entryId}/followup`,
+      { entry_id: entryId, question },
+    ),
+  answerFollowup: (id: string, entryId: string, answer: string) =>
+    postJson<import("@/lib/types").FollowupAnswerResponse>(
+      `/api/sessions/${id}/topics/${entryId}/followup/answer`,
+      { entry_id: entryId, answer },
+    ),
+  triggerExport: (id: string) =>
+    postJson<import("@/lib/types").ExportTriggerResponse>(`/api/sessions/${id}/export`, {}),
+  exportDownloadUrl: (id: string) => apiUrl(`/api/sessions/${id}/export/download`),
   endSession: (id: string) => postJson<{ session_id: string; status: string }>(`/api/sessions/${id}/end`, {}),
   report: (id: string) => getJson<import("@/lib/types").ReportResponse>(`/api/sessions/${id}/report`),
   resources: (id: string) =>

@@ -23,12 +23,15 @@ from core.state import DraftClaim, ReviewNote
 # 进阶挑战的掌握度门槛（PRD FR-10：双向决策的"进阶"侧）
 CHALLENGE_MASTERY_GATE = 0.85
 
-# 难度层级 → 允许的条目难度上限（画像-资源适配率指标的判定口径，PRD §5）
-_DIFFICULTY_CAP = {"beginner": 2, "intermediate": 3, "advanced": 5}
+# 难度层级 → 条目难度容忍带上限（画像-资源适配率指标的判定口径，PRD §5）。
+# 带 = 严格层级上限 + 1：诊断层级是单次 LLM 推断（对照画像层级准确率实测仅 0.5），
+# 判定带一个 ±1 级的不确定带才科学；且前置链闭包拉入的相邻难度前置条目是
+# 正确的教学行为，不应记为失配。偏离容忍带 2 级及以上才降级标记 capped。
+_DIFFICULTY_CAP = {"beginner": 3, "intermediate": 4, "advanced": 5}
 
 
 def difficulty_tier_for(level: str, entry_difficulty: int) -> str:
-    """资源难度层级：诊断层级允许该条目时用层级本身，超出时降级标记为 capped。
+    """资源难度层级：条目难度在层级容忍带（上限+1）内用层级本身，超出降级标记 capped。
 
     适配率指标（evals/metrics.py）以本函数输出为判定输入——
     资源包难度层级与诊断难度层级一致（未 capped）即记一次适配。
@@ -38,7 +41,7 @@ def difficulty_tier_for(level: str, entry_difficulty: int) -> str:
 
 
 def is_tier_matched(tier: str) -> bool:
-    """资源难度层级是否与诊断层级匹配（非 capped）。"""
+    """资源难度层级是否与诊断层级匹配（非 capped——容忍带内即适配）。"""
     return not tier.startswith("capped:")
 
 

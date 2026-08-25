@@ -64,6 +64,31 @@ export interface AnswerResponse {
   is_scaffold: boolean;
 }
 
+/** 动态追问判定结果（POST /topics/{entry}/followup）：无效只有理由，有效携带确认题 */
+export interface FollowupAskResponse {
+  valid: boolean;
+  reason: string;
+  round_no: number;
+  question_id: string | null;
+  prompt: string | null;
+  options: string[];
+}
+
+/** 追问确认题作答结果（不写掌握度：澄清工具非测评） */
+export interface FollowupAnswerResponse {
+  is_correct: boolean;
+  evaluation: string;
+  correct_label: string;
+  round_no: number;
+}
+
+/** 导出触发结果（POST /api/sessions/{id}/export） */
+export interface ExportTriggerResponse {
+  session_id: string;
+  count: number;
+  entry_ids: string[];
+}
+
 export interface SessionListItem {
   session_id: string;
   learner_id: string;
@@ -101,11 +126,29 @@ export interface TierMatch {
   total: number;
 }
 
+/** 逐包难度层级明细（报告页徽章展示用） */
+export interface TierDetail {
+  entry_id: string;
+  title: string;
+  tier: string;
+  matched: boolean;
+}
+
+/** 赛题三指标总览（与 evals/run.py 逐组结果同口径，SSOT 在 evals/metrics.py） */
+export interface ReportMetrics {
+  hallucination_rate: number;
+  claims_total: number;
+  tier_match: { rate: number; matched: number; total: number };
+  keyword_coverage: { rate: number; hit: number; total: number };
+}
+
 export interface ReportResponse {
   session_id: string;
   difficulty_level: DifficultyLevel | string | null;
   radar: RadarItem[];
   tier_match: TierMatch;
+  tiers: TierDetail[];
+  metrics: ReportMetrics;
   path: PlanTopic[];
   regressions: { entry_id: string; prereq_id: string | null; reason: string }[];
 }
@@ -196,9 +239,16 @@ export interface TopicStateResponse {
   scaffold_pending: boolean;
   prereq_id: string | null;
   has_answered: boolean;
+  /** 未作答的追问确认题（刷新恢复用；无则 null） */
+  followup_pending: {
+    question_id: string;
+    prompt: string;
+    options: string[];
+    round_no: number;
+  } | null;
 }
 
-// ---------- 会话事件（协议 14 类 + error）----------
+// ---------- 会话事件（协议 17 类 + packages_exported + error）----------
 
 export interface SessionEvent<T = Record<string, unknown>> {
   seq?: number;
@@ -293,6 +343,31 @@ export interface ScaffoldOfferedPayload {
   mirror: string;
 }
 
+export interface FollowupAskedPayload {
+  entry_id: string;
+  round_no: number;
+  student_question: string;
+  valid: boolean;
+  reason: string;
+}
+
+export interface FollowupOfferedPayload {
+  entry_id: string;
+  round_no: number;
+  question_id: string;
+  prompt: string;
+  options: string[];
+}
+
+export interface FollowupGradedPayload {
+  entry_id: string;
+  round_no: number;
+  question_id: string;
+  is_correct: boolean;
+  correct_label: string;
+  evaluation: string;
+}
+
 export interface TopicAdvancePayload {
   entry_id: string;
   mastery: number;
@@ -336,6 +411,9 @@ export type SessionEventPayload =
   | QuestionBuiltPayload
   | AnswerGradedPayload
   | ScaffoldOfferedPayload
+  | FollowupAskedPayload
+  | FollowupOfferedPayload
+  | FollowupGradedPayload
   | TopicAdvancePayload
   | TopicRegressPayload
   | PackageSavedPayload

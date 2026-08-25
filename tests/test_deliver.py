@@ -95,10 +95,13 @@ def test_challenge_gate():
 
 
 def test_difficulty_tier():
+    # 容忍带口径（2026-08-26）：层级上限+1 内即适配，超出 2 级及以上才 capped
     assert difficulty_tier_for("beginner", 2) == "beginner"
-    assert difficulty_tier_for("beginner", 3) == "capped:beginner"
+    assert difficulty_tier_for("beginner", 3) == "beginner"  # 容忍带内（上限 2 + 1）
+    assert difficulty_tier_for("beginner", 4) == "capped:beginner"
     assert is_tier_matched("beginner") and not is_tier_matched("capped:beginner")
-    assert difficulty_tier_for("intermediate", 3) == "intermediate"
+    assert difficulty_tier_for("intermediate", 4) == "intermediate"
+    assert difficulty_tier_for("intermediate", 5) == "capped:intermediate"
     assert difficulty_tier_for("advanced", 5) == "advanced"
 
 

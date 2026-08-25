@@ -79,6 +79,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if not entries:
         raise RuntimeError("知识库为空，请先运行 scripts/init_db.py")
     app.state.store = SessionStore(settings.database_path)
+    app.state.provider = provider  # 导出端点直接驱动 distill（不经教学图）
+    app.state.settings = settings
     app.state.loop = TeachLoop(
         graph=build_teach_graph(settings, provider, retriever),
         provider=provider,

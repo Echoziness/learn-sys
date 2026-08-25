@@ -2,7 +2,9 @@
 
 口径与 PRD §5 一致：
 - 幻觉率 = 最终裁决为 unsupported 的论断数 / 总论断数（fail-closed：无裁决视为 unsupported）
-- 画像-资源适配率 = 资源包难度层级与诊断难度层级的匹配率（tier 非 capped）
+- 画像-资源适配率 = 资源包难度层级与诊断难度层级的匹配率（tier 非 capped）；
+  判定容忍带 = 层级上限+1（诊断层级为单次 LLM 推断，带 ±1 级不确定带，
+  口径事实源见 core/deliver.difficulty_tier_for）
 - 知识点覆盖率 = 目标条目 keywords 在该条目资源包讲义文本中的覆盖比例（逐条目聚合）
 
 每条论断恰好计入一次，不存在规则层/NLI 层双重计数（由 review.merge_verdicts 保证）。

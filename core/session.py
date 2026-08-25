@@ -265,14 +265,17 @@ class SessionStore:
             db.close()
 
     def get_pending_round(self, session_id: str, entry_id: str) -> dict[str, Any] | None:
-        """最近一条未作答的教学轮（next_question 幂等复用：web 刷新安全）。"""
+        """最近一条未作答的主教学轮（next_question 幂等复用：web 刷新安全）。
+
+        decision='pending' 过滤：追问侧车轮（decision='followup'）不占用主出题通道。
+        """
         db = self._connect()
         try:
             row = db.execute(
                 "SELECT session_id, entry_id, round_no, question_json, expected_json, "
                 "answer_text, grade_json, decision, mastery_after, created_at "
                 "FROM topic_rounds "
-                "WHERE session_id=? AND entry_id=? AND answer_text IS NULL "
+                "WHERE session_id=? AND entry_id=? AND answer_text IS NULL AND decision='pending' "
                 "ORDER BY id DESC LIMIT 1",
                 (session_id, entry_id),
             ).fetchone()
@@ -325,12 +328,31 @@ class SessionStore:
             db.close()
 
     def delete_pending_rounds(self, session_id: str, entry_id: str) -> None:
-        """重教作废未作答的轮（teach_round 前置清理）——未作答无审计价值，事件流留痕。"""
+        """重教作废未作答的轮（teach_round 前置清理）——未作答无审计价值，事件流留痕。
+
+        含未作答的追问侧车轮（重教后教学内容更新，旧确认题基于旧论断失效）。
+        """
         db = self._connect()
         try:
             db.execute(
                 "DELETE FROM topic_rounds "
                 "WHERE session_id=? AND entry_id=? AND answer_text IS NULL",
+                (session_id, entry_id),
+            )
+            db.commit()
+        finally:
+            db.close()
+
+    def delete_pending_followup(self, session_id: str, entry_id: str) -> None:
+        """作废未作答的追问侧车轮（新提问替换旧确认题）。
+
+        只删 decision='followup' 的未作答行，不碰主教学轮的 pending 题目。
+        """
+        db = self._connect()
+        try:
+            db.execute(
+                "DELETE FROM topic_rounds "
+                "WHERE session_id=? AND entry_id=? AND answer_text IS NULL AND decision='followup'",
                 (session_id, entry_id),
             )
             db.commit()

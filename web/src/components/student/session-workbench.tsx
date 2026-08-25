@@ -17,6 +17,7 @@ import type {
 } from "@/lib/types";
 
 import { LevelBadge } from "@/components/shared/badges";
+import { FollowupPanel } from "@/components/student/followup-panel";
 import { QuestionCard } from "@/components/student/question-card";
 import { TeachPanel } from "@/components/student/teach-panel";
 import { TopicList, type TopicStatus } from "@/components/student/topic-list";
@@ -288,8 +289,8 @@ export function SessionWorkbench({ sessionId }: { sessionId: string }) {
         )}
       </section>
 
-      {/* 右：答题卡 */}
-      <section className="min-w-0">
+      {/* 右：答题卡 + 追问 */}
+      <section className="min-w-0 space-y-4">
         {question && (phase === "questioning" || phase === "graded") && (
           <QuestionCard
             question={question}
@@ -298,6 +299,13 @@ export function SessionWorkbench({ sessionId }: { sessionId: string }) {
             onSubmit={submitAnswer}
             onNext={proceed}
             nextLabel={nextLabel}
+          />
+        )}
+        {currentTopic && (phase === "questioning" || phase === "graded") && (
+          <FollowupPanel
+            sessionId={sessionId}
+            entryId={currentTopic.entry_id}
+            pending={topicState?.followup_pending ?? null}
           />
         )}
         {phase === "teaching" && (

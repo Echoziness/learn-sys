@@ -41,6 +41,29 @@ class AnswerRequest(BaseModel):
     answer: str = Field(min_length=1, max_length=4000)
 
 
+class FollowupRequest(BaseModel):
+    entry_id: str = Field(min_length=1)
+    question: str = Field(min_length=1, max_length=2000)
+
+
+class FollowupAskOut(BaseModel):
+    """动态追问判定结果：无效时只有理由；有效时携带确认型选择题。"""
+
+    valid: bool
+    reason: str
+    round_no: int
+    question_id: str | None = None
+    prompt: str | None = None
+    options: list[str] = Field(default_factory=list)
+
+
+class FollowupAnswerOut(BaseModel):
+    is_correct: bool
+    evaluation: str
+    correct_label: str
+    round_no: int
+
+
 class SessionEventOut(BaseModel):
     seq: int
     event_type: str
@@ -118,6 +141,9 @@ __all__ = [
     "CreateSessionResponse",
     "DeleteSessionOut",
     "ExportedEntryOut",
+    "FollowupAnswerOut",
+    "FollowupAskOut",
+    "FollowupRequest",
     "PlanTopicOut",
     "ProfileBackground",
     "ResourcesAggregateOut",
