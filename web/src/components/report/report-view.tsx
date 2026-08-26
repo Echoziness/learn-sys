@@ -47,15 +47,47 @@ function PathChart({ topics, regressions }: { topics: { entry_id: string; title:
 /** 掌握度门槛（数值事实源在 core/mastery.py，此处仅展示层常量保持一致） */
 const MASTERY_GATE = 0.7;
 
-/** 雷达图展示层映射：以门槛为视觉中点——原始 0~1 轴下 0.7 达标只占半径 70%，
- * 视觉上显得"远未掌握"；压缩为 [0,0.7]→[0,0.5]、[0.7,1]→[0.5,1] 后达标值居中、
- * 达标后差异按比例放大；Tooltip 仍展示原始掌握度。 */
+/** 雷达图展示层映射：未达标段 [0,0.7)→[0,0.5] 线性，保留差距细节；
+ * 达标段 [0.7,1]→[0.82,1] ease-out（二次幂）——本系统达门槛即 advance，
+ * 0.7~1.0 的差异在教学决策层几乎无意义，故刚过门槛即视觉上接近满半径，
+ * 已过门槛的主题均呈"接近掌握"。0.5→0.82 的跳变是刻意保留的达标/未达标
+ * 视觉分界（门槛虚线圈即落在 0.82）；Tooltip 仍展示原始掌握度。 */
+const GATE_VISUAL = 0.82;
+const GATE_EASE_EXP = 2;
+
 function visualMastery(mastery: number): number {
-  if (mastery <= MASTERY_GATE) return (mastery / MASTERY_GATE) * 0.5;
-  return 0.5 + ((mastery - MASTERY_GATE) / (1 - MASTERY_GATE)) * 0.5;
+  if (mastery < MASTERY_GATE) return (mastery / MASTERY_GATE) * 0.5;
+  const t = (mastery - MASTERY_GATE) / (1 - MASTERY_GATE);
+  return GATE_VISUAL + (1 - GATE_VISUAL) * (1 - Math.pow(1 - t, GATE_EASE_EXP));
 }
 
 const MASTERY_GATE_VISUAL = visualMastery(MASTERY_GATE);
+
+/** 雷达轴标签：截短展示，但必须全局唯一——recharts 雷达顶点角度按轴值查 scale，
+ * 重名轴（如两个标题都截成「pandas 数」）会让两顶点叠到同一角度、多边形撕裂。
+ * 碰撞的标签逐字符加长消歧；轴多时自适应缩短初始长度留出标签空间。 */
+function uniqueAxisLabels(titles: string[], baseMax: number): string[] {
+  const make = (t: string, max: number) => (t.length > max ? `${t.slice(0, max)}…` : t);
+  const limits = titles.map(() => baseMax);
+  for (let round = 0; round < 40; round++) {
+    const labels = titles.map((t, i) => make(t, limits[i]));
+    const firstIndex = new Map<string, number>();
+    let collided = false;
+    labels.forEach((label, i) => {
+      const first = firstIndex.get(label);
+      if (first === undefined) {
+        firstIndex.set(label, i);
+      } else {
+        collided = true;
+        limits[first] += 1;
+        limits[i] += 1;
+      }
+    });
+    if (!collided) return labels;
+  }
+  // 极端兜底：拼序号强制唯一（标题互不为前缀时理论上到不了这里）
+  return titles.map((t, i) => `${make(t, limits[i])}${i + 1}`);
+}
 
 /** 指标卡：赛题目标值达标与否用状态徽章明示，数字大而不喽——排版节奏：标签/大数/口径注释 */
 function MetricTile({ label, value, ok, note }: { label: string; value: string; ok: boolean; note: string }) {
@@ -138,8 +170,10 @@ export function ReportView({ sessionId }: { sessionId: string }) {
   if (report.isError || r === null || r === undefined) {
     return <p className="text-sm text-destructive">报告加载失败：{String(report.error?.message ?? "").slice(0, 200)}</p>;
   }
-  const radarData = r.radar.map((x) => ({
-    subject: x.title.slice(0, 8),
+  const axisLabels = uniqueAxisLabels(r.radar.map((x) => x.title), r.radar.length > 10 ? 6 : 8);
+  const radarData = r.radar.map((x, i) => ({
+    subject: axisLabels[i],
+    fullTitle: x.title,
     mastery: visualMastery(x.mastery),
     gate: MASTERY_GATE_VISUAL,
     raw: x.mastery,
@@ -190,7 +224,11 @@ export function ReportView({ sessionId }: { sessionId: string }) {
             {radarData.length >= 3 ? (
               <div className="h-56">
                 <ResponsiveContainer width="100%" height="100%">
-                  <RadarChart data={radarData}>
+                  <RadarChart
+                    data={radarData}
+                    // 轴多时收缩多边形半径，给轴标签留出环形空间（默认 80% 会顶到卡片边缘）
+                    outerRadius={radarData.length > 10 ? "62%" : "80%"}
+                  >
                     <PolarGrid />
                     <PolarAngleAxis dataKey="subject" tick={{ fontSize: 10 }} />
                     {/* 显式半径域：防自动域把映射后的 0~1 值压缩到中心 */}
@@ -202,6 +240,9 @@ export function ReportView({ sessionId }: { sessionId: string }) {
                         name === "mastery"
                           ? [`${(item?.payload as { raw?: number })?.raw?.toFixed(2) ?? value}`, "掌握度"]
                           : [`${MASTERY_GATE}`, "门槛"]
+                      }
+                      labelFormatter={(label, payload) =>
+                        (payload?.[0]?.payload as { fullTitle?: string })?.fullTitle ?? String(label)
                       }
                     />
                   </RadarChart>
