@@ -83,10 +83,16 @@ export function PathFlow({ topics, regressions }: { topics: PathTopic[]; regress
         markerEnd: { type: "arrowclosed" as const, color: "var(--muted-foreground)", width: 14, height: 14 },
       });
     }
+    // 防御性去重：同一 (entry, prereq) 只画一条回退边——后端已聚合，
+    // 但旧会话/异常事件流可能带重复记录，重复会撞边 key（regress-<entry_id>）
+    const seenRegress = new Set<string>();
     for (const r of regressions) {
       if (!r.prereq_id) continue;
+      const key = `${r.entry_id}->${r.prereq_id}`;
+      if (seenRegress.has(key)) continue;
+      seenRegress.add(key);
       edges.push({
-        id: `regress-${r.entry_id}`,
+        id: `regress-${r.entry_id}-${r.prereq_id}`,
         source: r.entry_id,
         target: r.prereq_id,
         type: "bezier",

@@ -289,9 +289,17 @@ async def report(session_id: str, request: Request):
             "tier_match": {"rate": round(tier_rate, 4), "matched": tier_matched, "total": tier_total},
             "keyword_coverage": {"rate": round(cov_rate, 4), "hit": cov_hit, "total": cov_total},
         },
-        # 路径图：切片 + 回归回边
+        # 路径图：切片 + 回归回边——同一主题可多次回退（重教后又答错再退），
+        # 按 (entry_id, prereq_id) 去重：路径图画的是发生过哪些回退，重复回退只画一条边，
+        # 重复记录会让前端边 key 碰撞（regress-<entry_id>）触发 React duplicate key
         "path": session["plan"].get("topics", []),
-        "regressions": [e.payload for e in events if e.event_type == "topic_regress"],
+        "regressions": list(
+            {
+                (e.payload.get("entry_id"), e.payload.get("prereq_id")): e.payload
+                for e in events
+                if e.event_type == "topic_regress"
+            }.values()
+        ),
     }
 
 
