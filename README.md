@@ -10,14 +10,14 @@
 教学内核（诊断/检索/生成/审核/出题/判分/决策/脚手架）  ███████████ 完成，冻结打磨
 会话持久化 + 资源沉淀层 + API                          ███████████ W1 完成
 Web 三画面（学生面 / 裁判面 / 报告）+ 回放              ███████████ W2 完成
-评测（三指标 + 50 组画像 + 批量脚本）                   █████████░ 口径已验，全量批跑收盘归档
+评测（三指标 + 50 组画像 + 批量脚本）                   ███████████ 全量 50 组归档，三指标全部达标
 产出物条目化导出（资源包 → 知识库同构，可复用闭环）       ███████████ 完成
-交付（compose 复验 / 视频 / 提交包）                     ░░░░░░░░░░░ 收盘
+交付（部署说明 / 视频 / 提交包）                       ░░░░░░░░░░░ 收盘（本地部署，已放弃 Docker）
 ```
 
-测试基线：pytest 193 通过 · pyright 0 errors · ruff 全绿 · web typecheck/lint/build 全绿。
+测试基线：pytest 213 通过 · pyright 0 errors · ruff 全绿 · web typecheck/lint/build 全绿。
 
-评测状态：三指标口径已落地（`evals/metrics.py` 与赛题一一对应）；教学弧 prompt 收敛后单会话验证幻觉率 3.8%（<5%）、知识点覆盖率 98.4%（≥90%）；全量 50 组批跑在系统冻结后一次归档。
+评测状态：全量 50 组画像批跑归档（`evals/results/`）——幻觉率 0.44%（目标 <5%）/ 画像-资源适配率 99.0%（目标 ≥85%）/ 知识点覆盖率 97.2%（目标 ≥90%），口径 SSOT 在 `evals/metrics.py`。审核消融对照（`evals/ablation.py`）：无打回回路时裸幻觉率 8.86%，回路压至 0.44%，净挽救 343 条幻觉论断。
 
 ## 快速开始
 
@@ -50,8 +50,8 @@ uv run python evals/run.py              # 全量 50 组（并发 5，断点续�
 # 产出物复用：资源包 → 知识库同构条目（可被 init_db 原样入库）
 uv run python scripts/export_packages.py    # 默认最新已完成会话
 
-# 交付
-docker compose up --build
+# 交付包生成（源码归档 + 测试数据包 + 清单校验；部署步骤见 docs/部署说明.md）
+uv run python scripts/pack_delivery.py
 ```
 
 Web 路由一览：`/`（画像表单，双画像预设）· `/sessions`（历史会话列表 + 回放入口）· `/sessions/{id}`（学生面工作台）· `/sessions/{id}/orchestration`（裁判面，live 实时跟随 / replay 播放器）· `/sessions/{id}/report`（学情报告三图 + 资源包浏览）。无 LLM key 环境用历史会话回放演示。

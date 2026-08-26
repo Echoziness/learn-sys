@@ -1,0 +1,569 @@
+{
+  "sessions": 50,
+  "rewrite_rounds": 237,
+  "baseline_no_loop": {
+    "claims": 4074,
+    "unsupported": 361,
+    "hallucination_rate": 0.0886
+  },
+  "final_with_loop": {
+    "claims": 4074,
+    "unsupported": 18,
+    "hallucination_rate": 0.0044
+  },
+  "saved_unsupported_claims": 343,
+  "relative_reduction": 0.9501,
+  "口径": "基线 = review_done review_round=1 首轮裁决（无打回回路时的交付内容）；最终 = teach_delivered 裁决（与 evals/metrics.py 同源，无裁决计 unsupported）",
+  "per_session": [
+    {
+      "learner_id": "p01",
+      "baseline": {
+        "claims": 71,
+        "unsupported": 9
+      },
+      "final": {
+        "claims": 71,
+        "unsupported": 2
+      }
+    },
+    {
+      "learner_id": "p02",
+      "baseline": {
+        "claims": 61,
+        "unsupported": 2
+      },
+      "final": {
+        "claims": 61,
+        "unsupported": 0
+      }
+    },
+    {
+      "learner_id": "p03",
+      "baseline": {
+        "claims": 100,
+        "unsupported": 6
+      },
+      "final": {
+        "claims": 100,
+        "unsupported": 0
+      }
+    },
+    {
+      "learner_id": "p04",
+      "baseline": {
+        "claims": 65,
+        "unsupported": 2
+      },
+      "final": {
+        "claims": 65,
+        "unsupported": 0
+      }
+    },
+    {
+      "learner_id": "p05",
+      "baseline": {
+        "claims": 93,
+        "unsupported": 9
+      },
+      "final": {
+        "claims": 93,
+        "unsupported": 0
+      }
+    },
+    {
+      "learner_id": "p06",
+      "baseline": {
+        "claims": 69,
+        "unsupported": 4
+      },
+      "final": {
+        "claims": 69,
+        "unsupported": 0
+      }
+    },
+    {
+      "learner_id": "p07",
+      "baseline": {
+        "claims": 77,
+        "unsupported": 10
+      },
+      "final": {
+        "claims": 77,
+        "unsupported": 1
+      }
+    },
+    {
+      "learner_id": "p08",
+      "baseline": {
+        "claims": 85,
+        "unsupported": 6
+      },
+      "final": {
+        "claims": 85,
+        "unsupported": 0
+      }
+    },
+    {
+      "learner_id": "p09",
+      "baseline": {
+        "claims": 86,
+        "unsupported": 7
+      },
+      "final": {
+        "claims": 86,
+        "unsupported": 0
+      }
+    },
+    {
+      "learner_id": "p10",
+      "baseline": {
+        "claims": 86,
+        "unsupported": 12
+      },
+      "final": {
+        "claims": 86,
+        "unsupported": 2
+      }
+    },
+    {
+      "learner_id": "p11",
+      "baseline": {
+        "claims": 74,
+        "unsupported": 3
+      },
+      "final": {
+        "claims": 74,
+        "unsupported": 0
+      }
+    },
+    {
+      "learner_id": "p12",
+      "baseline": {
+        "claims": 63,
+        "unsupported": 8
+      },
+      "final": {
+        "claims": 63,
+        "unsupported": 0
+      }
+    },
+    {
+      "learner_id": "p13",
+      "baseline": {
+        "claims": 61,
+        "unsupported": 9
+      },
+      "final": {
+        "claims": 61,
+        "unsupported": 2
+      }
+    },
+    {
+      "learner_id": "p14",
+      "baseline": {
+        "claims": 52,
+        "unsupported": 0
+      },
+      "final": {
+        "claims": 52,
+        "unsupported": 0
+      }
+    },
+    {
+      "learner_id": "p15",
+      "baseline": {
+        "claims": 46,
+        "unsupported": 0
+      },
+      "final": {
+        "claims": 46,
+        "unsupported": 0
+      }
+    },
+    {
+      "learner_id": "p16",
+      "baseline": {
+        "claims": 69,
+        "unsupported": 4
+      },
+      "final": {
+        "claims": 69,
+        "unsupported": 0
+      }
+    },
+    {
+      "learner_id": "p17",
+      "baseline": {
+        "claims": 65,
+        "unsupported": 1
+      },
+      "final": {
+        "claims": 65,
+        "unsupported": 0
+      }
+    },
+    {
+      "learner_id": "p18",
+      "baseline": {
+        "claims": 117,
+        "unsupported": 10
+      },
+      "final": {
+        "claims": 117,
+        "unsupported": 0
+      }
+    },
+    {
+      "learner_id": "p19",
+      "baseline": {
+        "claims": 123,
+        "unsupported": 14
+      },
+      "final": {
+        "claims": 123,
+        "unsupported": 2
+      }
+    },
+    {
+      "learner_id": "p20",
+      "baseline": {
+        "claims": 87,
+        "unsupported": 5
+      },
+      "final": {
+        "claims": 87,
+        "unsupported": 0
+      }
+    },
+    {
+      "learner_id": "p21",
+      "baseline": {
+        "claims": 65,
+        "unsupported": 4
+      },
+      "final": {
+        "claims": 65,
+        "unsupported": 0
+      }
+    },
+    {
+      "learner_id": "p22",
+      "baseline": {
+        "claims": 68,
+        "unsupported": 3
+      },
+      "final": {
+        "claims": 68,
+        "unsupported": 0
+      }
+    },
+    {
+      "learner_id": "p23",
+      "baseline": {
+        "claims": 124,
+        "unsupported": 15
+      },
+      "final": {
+        "claims": 124,
+        "unsupported": 1
+      }
+    },
+    {
+      "learner_id": "p24",
+      "baseline": {
+        "claims": 72,
+        "unsupported": 13
+      },
+      "final": {
+        "claims": 72,
+        "unsupported": 1
+      }
+    },
+    {
+      "learner_id": "p25",
+      "baseline": {
+        "claims": 79,
+        "unsupported": 3
+      },
+      "final": {
+        "claims": 79,
+        "unsupported": 0
+      }
+    },
+    {
+      "learner_id": "p26",
+      "baseline": {
+        "claims": 72,
+        "unsupported": 6
+      },
+      "final": {
+        "claims": 72,
+        "unsupported": 0
+      }
+    },
+    {
+      "learner_id": "p27",
+      "baseline": {
+        "claims": 89,
+        "unsupported": 13
+      },
+      "final": {
+        "claims": 89,
+        "unsupported": 1
+      }
+    },
+    {
+      "learner_id": "p29",
+      "baseline": {
+        "claims": 53,
+        "unsupported": 1
+      },
+      "final": {
+        "claims": 53,
+        "unsupported": 0
+      }
+    },
+    {
+      "learner_id": "p30",
+      "baseline": {
+        "claims": 76,
+        "unsupported": 6
+      },
+      "final": {
+        "claims": 76,
+        "unsupported": 0
+      }
+    },
+    {
+      "learner_id": "p28",
+      "baseline": {
+        "claims": 97,
+        "unsupported": 15
+      },
+      "final": {
+        "claims": 97,
+        "unsupported": 1
+      }
+    },
+    {
+      "learner_id": "p31",
+      "baseline": {
+        "claims": 96,
+        "unsupported": 4
+      },
+      "final": {
+        "claims": 96,
+        "unsupported": 0
+      }
+    },
+    {
+      "learner_id": "p32",
+      "baseline": {
+        "claims": 72,
+        "unsupported": 8
+      },
+      "final": {
+        "claims": 72,
+        "unsupported": 0
+      }
+    },
+    {
+      "learner_id": "p33",
+      "baseline": {
+        "claims": 89,
+        "unsupported": 3
+      },
+      "final": {
+        "claims": 89,
+        "unsupported": 0
+      }
+    },
+    {
+      "learner_id": "p34",
+      "baseline": {
+        "claims": 88,
+        "unsupported": 7
+      },
+      "final": {
+        "claims": 88,
+        "unsupported": 0
+      }
+    },
+    {
+      "learner_id": "p35",
+      "baseline": {
+        "claims": 84,
+        "unsupported": 5
+      },
+      "final": {
+        "claims": 84,
+        "unsupported": 0
+      }
+    },
+    {
+      "learner_id": "p36",
+      "baseline": {
+        "claims": 85,
+        "unsupported": 15
+      },
+      "final": {
+        "claims": 85,
+        "unsupported": 2
+      }
+    },
+    {
+      "learner_id": "p37",
+      "baseline": {
+        "claims": 67,
+        "unsupported": 2
+      },
+      "final": {
+        "claims": 67,
+        "unsupported": 0
+      }
+    },
+    {
+      "learner_id": "p38",
+      "baseline": {
+        "claims": 91,
+        "unsupported": 10
+      },
+      "final": {
+        "claims": 91,
+        "unsupported": 0
+      }
+    },
+    {
+      "learner_id": "p39",
+      "baseline": {
+        "claims": 58,
+        "unsupported": 6
+      },
+      "final": {
+        "claims": 58,
+        "unsupported": 0
+      }
+    },
+    {
+      "learner_id": "p40",
+      "baseline": {
+        "claims": 65,
+        "unsupported": 2
+      },
+      "final": {
+        "claims": 65,
+        "unsupported": 0
+      }
+    },
+    {
+      "learner_id": "p41",
+      "baseline": {
+        "claims": 78,
+        "unsupported": 9
+      },
+      "final": {
+        "claims": 78,
+        "unsupported": 0
+      }
+    },
+    {
+      "learner_id": "p42",
+      "baseline": {
+        "claims": 102,
+        "unsupported": 10
+      },
+      "final": {
+        "claims": 102,
+        "unsupported": 0
+      }
+    },
+    {
+      "learner_id": "p43",
+      "baseline": {
+        "claims": 81,
+        "unsupported": 8
+      },
+      "final": {
+        "claims": 81,
+        "unsupported": 1
+      }
+    },
+    {
+      "learner_id": "p44",
+      "baseline": {
+        "claims": 119,
+        "unsupported": 22
+      },
+      "final": {
+        "claims": 119,
+        "unsupported": 0
+      }
+    },
+    {
+      "learner_id": "p45",
+      "baseline": {
+        "claims": 52,
+        "unsupported": 0
+      },
+      "final": {
+        "claims": 52,
+        "unsupported": 0
+      }
+    },
+    {
+      "learner_id": "p46",
+      "baseline": {
+        "claims": 78,
+        "unsupported": 3
+      },
+      "final": {
+        "claims": 78,
+        "unsupported": 0
+      }
+    },
+    {
+      "learner_id": "p47",
+      "baseline": {
+        "claims": 224,
+        "unsupported": 33
+      },
+      "final": {
+        "claims": 224,
+        "unsupported": 1
+      }
+    },
+    {
+      "learner_id": "p48",
+      "baseline": {
+        "claims": 60,
+        "unsupported": 7
+      },
+      "final": {
+        "claims": 60,
+        "unsupported": 1
+      }
+    },
+    {
+      "learner_id": "p49",
+      "baseline": {
+        "claims": 74,
+        "unsupported": 5
+      },
+      "final": {
+        "claims": 74,
+        "unsupported": 0
+      }
+    },
+    {
+      "learner_id": "p50",
+      "baseline": {
+        "claims": 66,
+        "unsupported": 2
+      },
+      "final": {
+        "claims": 66,
+        "unsupported": 0
+      }
+    }
+  ]
+}

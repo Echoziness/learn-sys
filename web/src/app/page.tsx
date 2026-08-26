@@ -50,9 +50,9 @@ const FEATURES = [
 ];
 
 const METRICS = [
-  { value: "0.0%", label: "无溯源幻觉率", target: "赛题目标 <5%" },
-  { value: "100%", label: "画像-资源适配率", target: "赛题目标 ≥85%" },
-  { value: "100%", label: "知识点覆盖率", target: "赛题目标 ≥90%" },
+  { value: "0.44%", label: "无溯源幻觉率", target: "赛题目标 <5%" },
+  { value: "99.0%", label: "画像-资源适配率", target: "赛题目标 ≥85%" },
+  { value: "97.2%", label: "知识点覆盖率", target: "赛题目标 ≥90%" },
 ];
 
 export default function HomePage() {
@@ -143,7 +143,8 @@ export default function HomePage() {
             ))}
           </div>
           <p className="mt-10 border-t border-background/15 pt-5 text-center text-xs opacity-60">
-            口径与批量评测同源（单一事实源在评测指标模块）；50 组差异化画像全量批跑归档中，此为代表性画像实测值。
+            50 组差异化画像全量批跑归档值，口径与批量评测同源（单一事实源在评测指标模块）。
+            审核消融对照：无打回回路时裸幻觉率 8.86%，回路压至 0.44%，净挽救 343 条幻觉论断。
           </p>
         </div>
       </section>

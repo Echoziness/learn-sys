@@ -15,7 +15,7 @@
 | 前端 | Next.js 15 App Router + TypeScript strict |
 | 样式 | Tailwind CSS v4 + shadcn/ui（`@/components/ui`） |
 | 前端图表 | React Flow（@xyflow/react）+ Recharts |
-| 交付 | `docker compose up --build` |
+| 交付 | 本地部署（见 `docs/部署说明.md`）+ `scripts/pack_delivery.py` 提交包（2026-08-27 拍板放弃 Docker：赛题无容器要求，本地部署失败面更小） |
 | 包管理 | Python → uv · JS → pnpm |
 | CLI 交互 | stdlib readline + 输入净化（scripts/cli_input.py，开发自测用，不深投入） |
 
@@ -61,15 +61,14 @@ learn-sys/
 │   └── knowledge.db         # 知识库 + FTS5 + vec + 会话/事件/资源包（单文件，由 init_db 生成）
 ├── tests/                   # pytest，与 evals/metrics.py 同口径
 ├── evals/                   # metrics.py（三指标口径 SSOT）+ profiles/（50 组）+ gen_profiles.py（可复现生成）+ run.py（并发跑批/断点续跑）
-├── web/                     # Next.js 15（W2 三画面已上线）
-│   ├── app/                 # /（画像表单）/ sessions（列表）/ sessions/[id]（学生面工作台）
-│   │                        # / sessions/[id]/orchestration（裁判面，live/replay 双模式）
-│   │                        # / sessions/[id]/report（Recharts 三图 + 资源包浏览）
-│   │                        # / resources（资源库：跨会话聚合资源包与导出条目，会话/条目双筛选）
-│   ├── components/          # student/ orchestration/ report/ shared/ + ui/（shadcn，禁手改）
-│   └── lib/                 # api.ts（REST）/ sse.ts（POST 流解析 + GET EventSource）/ types.ts（事件+响应 SSOT）
-│                            # / orchestration-reducer.ts（事件→节点状态纯函数）
-└── docker-compose.yml       # api + web + db-init（三服务已验收：db-init → api healthy → web）
+└── web/                     # Next.js 15（W2 三画面已上线）
+    ├── app/                 # /（画像表单）/ sessions（列表）/ sessions/[id]（学生面工作台）
+    │                        # / sessions/[id]/orchestration（裁判面，live/replay 双模式）
+    │                        # / sessions/[id]/report（Recharts 三图 + 资源包浏览）
+    │                        # / resources（资源库：跨会话聚合资源包与导出条目，会话/条目双筛选）
+    ├── components/          # student/ orchestration/ report/ shared/ + ui/（shadcn，禁手改）
+    └── lib/                 # api.ts（REST）/ sse.ts（POST 流解析 + GET EventSource）/ types.ts（事件+响应 SSOT）
+                             # / orchestration-reducer.ts（事件→节点状态纯函数）
 ```
 
 ## 3. 架构
@@ -205,12 +204,7 @@ diagnose（LLM 一次，输出 gap_ids）→ plan（确定性切片：ID 投影 
 | choice 题不读讲义也能答对（"哪组要点属于X"关键词归属题） | 题干模板测的是元数据识别不是理解——词面匹配即可答对，与教学脱节 | choice 重做为概念辨析题：LLM 生成题干+陈述句正确项+误解干扰项，bigram 词重叠校验防跑题，正确项随机落位 |
 | 教学弧加入后幻觉率回归 7.2%（要点论断层引入工程实践建议） | "操作要点/边界"层引导 LLM 写"分号习惯/性能开销/选型建议"——条目里没有，审核正确拦截（`_ADVANCE_HINT` 同源教训复发） | 要点论断限定"条目原文写明的规则换强调形式"，GENERATE_PROMPT 加判断标准"删掉例子后概念陈述必须能在条目找到"——生成端与审核锚点第三次同源校准 |
 | api 启动即 ImportError（circular import） | routes 从 api.main 导入 sse_frame，main 又 import routes——模块级互相引用 | 工具函数放独立模块（api/sse.py），main 只做工厂与装配 |
-| 容器内前端连不上 API | `NEXT_PUBLIC_*` 是 Next.js 构建时内联变量，运行时 environment 不生效 | 走 build args：Dockerfile `ARG` + `ENV` 在 `pnpm build` 前，compose `build.args` 传入 |
-| docker 容器内 BGE 联网探测卡启动 | sentence-transformers 默认查 Hub 更新 | 容器 `HF_HUB_OFFLINE=1`（模型随 data/ 卷挂载，全离线） |
-| `docker compose build` 卡 npm/pypi 下载，报 `ENETUNREACH` | daemon 的 systemd 代理 env 只作用于 `docker pull`，不注入 BuildKit 构建容器；构建容器在独立 netns 也摸不到宿主 127.0.0.1 代理 | 组合拳：`~/.docker/config.json` 配 `proxies`（CLI 侧，BuildKit 自动注入构建步骤）+ compose `build.network: host`（容器内 127.0.0.1 直达宿主代理）；交付环境无 proxies 配置时构建走直连，不受影响 |
-| 容器 runtime 内 LLM 报 `Connection error`（`Connection refused`） | Docker 29 会把 `~/.docker/config.json` 的 proxies 注入 runtime 容器——容器内 `127.0.0.1:7897` 是自身 loopback，无代理监听 | compose `environment` 显式置空代理 env（`HTTP_PROXY: ""` 等）——runtime 走 LLM 直连；build 与 runtime 的网络策略独立 |
-| ghcr 镜像拉取报 `403 Forbidden`/`EOF` | 两个独立根因、症状相同：①ghcr.io 对**不存在的 repo 也回 403**（而非 not found）——镜像名写错与网络不通无法区分，排查时先核对名字；②`registry-mirrors`（daemon.json）只代理 docker.io，ghcr.io 不走加速 | 拉取前先 `docker pull` 验证；ghcr 用专属镜像站（`ghcr.m.daocloud.io`）或代理直连 |
-| BuildKit 报 `variable expansion is not supported for --from` | `COPY --from=${ARG}` 不支持变量展开 | ARG 放首个 FROM 前（全局作用域）+ `FROM ${UV_IMAGE} AS uv` 独立 stage，再 `COPY --from=uv` |
+| BGE 加载联网探测卡启动 | sentence-transformers 默认查 Hub 更新 | 运行环境设 `HF_HUB_OFFLINE=1`（模型随 data/bge-m3/ 携带，全离线） |
 | 场景题学生答实例词被判"没提到术语"（覆盖率 0%，连错放逐） | 题目措辞邀请实例答案（"用什么标识学生"→答"学号"），expected 却只认条目抽象术语（"主键"）——判分锚定术语黑话 | expected 双类要点强制（概念术语 + 题干实例词），校验源放宽到 content ∪ 题干；裁决权归 LLM 题意核对（同义表达判 correct） |
 | 学生答错后题目反而更难（死亡螺旋：错→重教加深→题更深→再错→regress） | 出题深度跟随"最新教学轮"而非"学生状态"——重教轮 extension 论断（深水区）进了出题上下文，且无已出题清单（换皮重考） | retry 信号（遗漏清单+连错次数）注入出题：只针对最重要遗漏要点降维出题；extension 失败后禁入题；previous_questions 防重考 |
 | 脚手架题干问"正确做法"但选项是关键词堆（语义崩坏） | 题干模板与选项格式独立拼接——LLM 干扰项生成时看不到最终题干 | LLM 一次生成完整三件套（题干+正确项+干扰项），服务端校验（词重叠+互异），失败回退时题干改为与关键词堆匹配的问法 |
@@ -246,5 +240,5 @@ uv run python scripts/init_db.py                 # 初始化知识库 + 会话�
 uv run python scripts/export_packages.py         # 资源包条目化导出（产出物 → 同构 entries.jsonl，可被 init_db 原样入库）
 uv run python evals/run.py --limit 5            # 评测小批（先验幻觉率，超标即调）
 uv run python evals/run.py                       # 评测全量 50 组（并发 5，~30 分钟）
-docker compose up --build                        # 交付启动
+uv run python scripts/pack_delivery.py          # 生成交付包（源码归档 + 测试数据包 + 清单校验）
 ```
