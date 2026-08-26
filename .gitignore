@@ -5,10 +5,14 @@ __pycache__/
 dist/
 .venv/
 venv/
+.pytest_cache/
+.ruff_cache/
 
 # Node
 node_modules/
 dist/
+.next/
+*.tsbuildinfo
 
 # SQLite
 *.db
@@ -25,6 +29,9 @@ dist/
 
 # Embedding 模型缓存
 data/bge-m3/
+
+# 导出产物（运行时生成，可重新导出）
+data/exports/
 
 # CLI 开发测试产物（正式示例待 Phase 6 评测后生成）
 data/output_sample.json
