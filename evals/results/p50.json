@@ -1,0 +1,28 @@
+{
+  "learner_id": "p50",
+  "name": "本科毕业 3 年·软件工程（50）",
+  "expect_level": "beginner",
+  "diagnosed_level": "beginner",
+  "session_id": "e328ab5dbe134582a4d774ff9d7b6830",
+  "hallucination_rate": 0.0,
+  "claims_total": 66,
+  "tier_match": {
+    "rate": 1.0,
+    "matched": 4,
+    "total": 4
+  },
+  "keyword_coverage": {
+    "rate": 0.9524,
+    "hit": 20,
+    "total": 21
+  },
+  "topics_advanced": 4,
+  "mastery_mean": 0.7721,
+  "masteries": {
+    "关系型数据库基本概念": 0.8,
+    "SELECT 基础查询": 0.8,
+    "ORDER BY 与 LIMIT": 0.8,
+    "WHERE 条件过滤": 0.661,
+    "聚合函数与 GROUP BY": 0.8
+  }
+}

@@ -1,15 +1,15 @@
 {
   "learner_id": "p50",
-  "name": "本科大四·英语（50）",
+  "name": "本科毕业 3 年·软件工程（50）",
   "background": {
-    "education": "本科大四",
-    "major": "英语",
-    "goal": "搭建业务数据看板",
-    "experience": "数据岗在职，日常用 SQL + Python，想补机器学习前的数据工程基础"
+    "education": "本科毕业 3 年",
+    "major": "软件工程",
+    "goal": "为考研大数据方向做准备",
+    "experience": "未接触过数据库、SQL 和任何编程语言，仅会 Office 基础操作"
   },
   "mastery": {},
   "style_tags": [
-    "analogy-first"
+    "code-first"
   ],
-  "expect_level": "advanced"
+  "expect_level": "beginner"
 }

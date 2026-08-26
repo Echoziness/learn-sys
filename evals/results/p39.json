@@ -1,0 +1,28 @@
+{
+  "learner_id": "p39",
+  "name": "本科毕业 3 年·物流管理（39）",
+  "expect_level": "advanced",
+  "diagnosed_level": "intermediate",
+  "session_id": "4d722ce2254347158b0e7f49610e4f55",
+  "hallucination_rate": 0.0,
+  "claims_total": 58,
+  "tier_match": {
+    "rate": 1.0,
+    "matched": 3,
+    "total": 3
+  },
+  "keyword_coverage": {
+    "rate": 1.0,
+    "hit": 15,
+    "total": 15
+  },
+  "topics_advanced": 3,
+  "mastery_mean": 0.7343,
+  "masteries": {
+    "描述性统计": 1.0,
+    "标准差与方差": 0.514,
+    "相关性分析": 0.557,
+    "正态分布与偏态": 0.8,
+    "假设检验与 p 值": 0.8
+  }
+}

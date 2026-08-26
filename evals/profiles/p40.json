@@ -1,15 +1,18 @@
 {
   "learner_id": "p40",
-  "name": "本科大二·工商管理学（40）",
+  "name": "本科毕业 3 年·会计学",
   "background": {
-    "education": "本科大二",
-    "major": "工商管理学",
-    "goal": "转行数据运营",
-    "experience": "未接触过数据库、SQL 和任何编程语言，仅会 Office 基础操作"
+    "education": "本科毕业 3 年",
+    "major": "会计学",
+    "goal": "提升职场竞争力",
+    "experience": "熟悉统计建模与 R 语言，用过 MySQL，Python 会写自动化脚本"
   },
-  "mastery": {},
+  "mastery": {
+    "BDA-PY-003": 0.82,
+    "BDA-SQL-009": 0.93
+  },
   "style_tags": [
     "step-by-step"
   ],
-  "expect_level": "beginner"
+  "expect_level": "advanced"
 }

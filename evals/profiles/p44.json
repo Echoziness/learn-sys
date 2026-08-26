@@ -1,16 +1,20 @@
 {
   "learner_id": "p44",
-  "name": "硕士在读·化学（44）",
+  "name": "本科大二·化学",
   "background": {
-    "education": "硕士在读",
+    "education": "本科大二",
     "major": "化学",
-    "goal": "转行商业分析",
-    "experience": "熟悉统计建模与 R 语言，用过 MySQL，Python 会写自动化脚本"
+    "goal": "提升职场竞争力",
+    "experience": "工作中有 SQL 取数经验，熟悉 pandas，想系统补统计基础"
   },
-  "mastery": {},
+  "mastery": {
+    "BDA-SQL-005": 0.89,
+    "BDA-ST-002": 0.93,
+    "BDA-ST-004": 0.76,
+    "BDA-PY-003": 0.74
+  },
   "style_tags": [
-    "code-first",
-    "concise"
+    "analogy-first"
   ],
   "expect_level": "advanced"
 }

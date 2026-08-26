@@ -5,11 +5,14 @@
     "education": "本科大四",
     "major": "电子信息",
     "goal": "转行数据运营",
-    "experience": "熟悉统计建模与 R 语言，用过 MySQL，Python 会写自动化脚本"
+    "experience": "运营岗三年，日常用 Excel 透视表，自学过两周 Python 语法"
   },
-  "mastery": {},
+  "mastery": {
+    "BDA-DB-001": 0.57
+  },
   "style_tags": [
-    "code-first"
+    "code-first",
+    "concise"
   ],
-  "expect_level": "advanced"
+  "expect_level": "intermediate"
 }

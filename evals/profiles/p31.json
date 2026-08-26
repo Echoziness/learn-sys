@@ -1,16 +1,16 @@
 {
   "learner_id": "p31",
-  "name": "本科大四·人力资源管理",
+  "name": "本科大二·土木工程",
   "background": {
-    "education": "本科大四",
-    "major": "人力资源管理",
-    "goal": "转行数据分析",
-    "experience": "工作中有 SQL 取数经验，熟悉 pandas，想系统补统计基础"
+    "education": "本科大二",
+    "major": "土木工程",
+    "goal": "提升职场竞争力",
+    "experience": "文科背景，只写过课程论文，没碰过代码和数据库，日常用 Excel 记帐"
   },
   "mastery": {},
   "style_tags": [
     "code-first",
     "concise"
   ],
-  "expect_level": "advanced"
+  "expect_level": "beginner"
 }

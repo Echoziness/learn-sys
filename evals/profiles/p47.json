@@ -1,15 +1,19 @@
 {
   "learner_id": "p47",
-  "name": "硕士毕业·计算机科学",
+  "name": "本科大三·汉语言文学（47）",
   "background": {
-    "education": "硕士毕业",
-    "major": "计算机科学",
-    "goal": "转行商业分析",
-    "experience": "会写简单 Python 脚本处理 Excel，未系统学过数据库"
+    "education": "本科大三",
+    "major": "汉语言文学",
+    "goal": "转行数据分析",
+    "experience": "做过 BI 报表开发，精通 SQL 多表查询与窗口函数，想转向分析岗"
   },
-  "mastery": {},
+  "mastery": {
+    "BDA-PY-002": 0.79,
+    "BDA-DT-002": 0.91
+  },
   "style_tags": [
-    "step-by-step"
+    "code-first",
+    "concise"
   ],
-  "expect_level": "intermediate"
+  "expect_level": "advanced"
 }

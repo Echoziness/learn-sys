@@ -1,15 +1,20 @@
 {
   "learner_id": "p39",
-  "name": "本科毕业 1 年·护理学",
+  "name": "本科毕业 3 年·物流管理（39）",
   "background": {
-    "education": "本科毕业 1 年",
-    "major": "护理学",
-    "goal": "提升职场竞争力",
-    "experience": "未接触过数据库、SQL 和任何编程语言，仅会 Office 基础操作"
+    "education": "本科毕业 3 年",
+    "major": "物流管理",
+    "goal": "转行数据分析",
+    "experience": "工作中有 SQL 取数经验，熟悉 pandas，想系统补统计基础"
   },
-  "mastery": {},
+  "mastery": {
+    "BDA-SQL-005": 0.73,
+    "BDA-SQL-006": 0.73,
+    "BDA-PY-003": 0.84
+  },
   "style_tags": [
-    "code-first"
+    "analogy-first",
+    "step-by-step"
   ],
-  "expect_level": "beginner"
+  "expect_level": "advanced"
 }

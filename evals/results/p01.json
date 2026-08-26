@@ -1,28 +1,28 @@
 {
   "learner_id": "p01",
   "name": "零基础转行者·文科背景",
-  "expect_level": "",
+  "expect_level": "beginner",
   "diagnosed_level": "beginner",
-  "session_id": "84f0f0ba35cb4752ab129a63a72c52ae",
-  "hallucination_rate": 0.0462,
-  "claims_total": 65,
+  "session_id": "7946840460444089856c71dff5e70e22",
+  "hallucination_rate": 0.0282,
+  "claims_total": 71,
   "tier_match": {
     "rate": 1.0,
-    "matched": 4,
-    "total": 4
+    "matched": 3,
+    "total": 3
   },
   "keyword_coverage": {
-    "rate": 1.0,
-    "hit": 18,
-    "total": 18
+    "rate": 0.8462,
+    "hit": 11,
+    "total": 13
   },
-  "topics_advanced": 4,
-  "mastery_mean": 0.7721,
+  "topics_advanced": 3,
+  "mastery_mean": 0.7443,
   "masteries": {
     "关系型数据库基本概念": 0.8,
     "pandas DataFrame 基础": 0.661,
     "SELECT 基础查询": 0.8,
-    "ORDER BY 与 LIMIT": 0.8,
-    "WHERE 条件过滤": 0.8
+    "WHERE 条件过滤": 0.8,
+    "ORDER BY 与 LIMIT": 0.661
   }
 }

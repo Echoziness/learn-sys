@@ -1,0 +1,31 @@
+{
+  "learner_id": "p18",
+  "name": "本科大四·英语（18）",
+  "expect_level": "intermediate",
+  "diagnosed_level": "intermediate",
+  "session_id": "60ca7f7580554fedabab8ff43d45f052",
+  "hallucination_rate": 0.0,
+  "claims_total": 117,
+  "tier_match": {
+    "rate": 1.0,
+    "matched": 4,
+    "total": 4
+  },
+  "keyword_coverage": {
+    "rate": 1.0,
+    "hit": 21,
+    "total": 21
+  },
+  "topics_advanced": 4,
+  "mastery_mean": 0.6781,
+  "masteries": {
+    "关系型数据库基本概念": 0.661,
+    "pandas DataFrame 基础": 0.243,
+    "描述性统计": 0.8,
+    "数据可视化基本原则": 0.661,
+    "SELECT 基础查询": 0.661,
+    "pandas 分组聚合": 0.8,
+    "JOIN 表连接": 0.8,
+    "聚合函数与 GROUP BY": 0.8
+  }
+}

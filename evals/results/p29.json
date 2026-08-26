@@ -1,0 +1,28 @@
+{
+  "learner_id": "p29",
+  "name": "硕士毕业·计算机科学",
+  "expect_level": "beginner",
+  "diagnosed_level": "beginner",
+  "session_id": "dfc1f586451a4f6e87dd364351de8c90",
+  "hallucination_rate": 0.0,
+  "claims_total": 53,
+  "tier_match": {
+    "rate": 1.0,
+    "matched": 5,
+    "total": 5
+  },
+  "keyword_coverage": {
+    "rate": 0.9091,
+    "hit": 20,
+    "total": 22
+  },
+  "topics_advanced": 5,
+  "mastery_mean": 0.8,
+  "masteries": {
+    "关系型数据库基本概念": 0.8,
+    "pandas DataFrame 基础": 0.8,
+    "描述性统计": 0.8,
+    "SELECT 基础查询": 0.8,
+    "WHERE 条件过滤": 0.8
+  }
+}

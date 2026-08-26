@@ -1,14 +1,19 @@
 {
   "learner_id": "p34",
-  "name": "硕士毕业·土木工程（34）",
+  "name": "专科毕业 2 年·电气工程",
   "background": {
-    "education": "硕士毕业",
-    "major": "土木工程",
-    "goal": "拿到数据分析实习",
-    "experience": "会写简单 Python 脚本处理 Excel，未系统学过数据库"
+    "education": "专科毕业 2 年",
+    "major": "电气工程",
+    "goal": "转行数据分析",
+    "experience": "运营岗三年，日常用 Excel 透视表，自学过两周 Python 语法"
   },
-  "mastery": {},
+  "mastery": {
+    "BDA-SQL-002": 0.57,
+    "BDA-DB-001": 0.6,
+    "BDA-PY-001": 0.7
+  },
   "style_tags": [
+    "code-first",
     "concise"
   ],
   "expect_level": "intermediate"

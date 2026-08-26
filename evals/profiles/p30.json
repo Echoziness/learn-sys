@@ -1,14 +1,17 @@
 {
   "learner_id": "p30",
-  "name": "本科毕业 3 年·物流管理（30）",
+  "name": "硕士毕业·工商管理学（30）",
   "background": {
-    "education": "本科毕业 3 年",
-    "major": "物流管理",
-    "goal": "提升职场竞争力",
-    "experience": "会写简单 Python 脚本处理 Excel，未系统学过数据库"
+    "education": "硕士毕业",
+    "major": "工商管理学",
+    "goal": "转行数据运营",
+    "experience": "学过数据库原理课程，会多表 JOIN 查询，Python 仅会调包"
   },
-  "mastery": {},
+  "mastery": {
+    "BDA-DB-001": 0.71
+  },
   "style_tags": [
+    "analogy-first",
     "step-by-step"
   ],
   "expect_level": "intermediate"

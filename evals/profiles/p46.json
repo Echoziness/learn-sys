@@ -1,15 +1,15 @@
 {
   "learner_id": "p46",
-  "name": "专科毕业 2 年·电子信息（46）",
+  "name": "专科毕业 2 年·英语",
   "background": {
     "education": "专科毕业 2 年",
-    "major": "电子信息",
+    "major": "英语",
     "goal": "提升职场竞争力",
-    "experience": "用过 SQL 做增删改查，Python 会 pandas 基础操作"
+    "experience": "销售岗转行，用过 Excel 函数但没接触过数据库，Python 零基础"
   },
   "mastery": {},
   "style_tags": [
     "analogy-first"
   ],
-  "expect_level": "intermediate"
+  "expect_level": "beginner"
 }

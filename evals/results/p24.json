@@ -1,0 +1,28 @@
+{
+  "learner_id": "p24",
+  "name": "本科毕业 1 年·会计学",
+  "expect_level": "advanced",
+  "diagnosed_level": "intermediate",
+  "session_id": "1382f7487baa49f1a39e650d1899db95",
+  "hallucination_rate": 0.0139,
+  "claims_total": 72,
+  "tier_match": {
+    "rate": 1.0,
+    "matched": 2,
+    "total": 2
+  },
+  "keyword_coverage": {
+    "rate": 1.0,
+    "hit": 10,
+    "total": 10
+  },
+  "topics_advanced": 2,
+  "mastery_mean": 0.6136,
+  "masteries": {
+    "描述性统计": 0.661,
+    "数据可视化基本原则": 0.304,
+    "标准差与方差": 1.0,
+    "相关性分析": 0.304,
+    "正态分布与偏态": 0.8
+  }
+}

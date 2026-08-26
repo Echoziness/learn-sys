@@ -1,15 +1,19 @@
 {
   "learner_id": "p26",
-  "name": "硕士毕业·物流管理",
+  "name": "本科大二·工商管理学",
   "background": {
-    "education": "硕士毕业",
-    "major": "物流管理",
-    "goal": "为考研大数据方向做准备",
-    "experience": "未接触过数据库、SQL 和任何编程语言，仅会 Office 基础操作"
+    "education": "本科大二",
+    "major": "工商管理学",
+    "goal": "转行数据运营",
+    "experience": "研究生阶段用过 pandas 做课题数据分析，熟悉描述统计与可视化"
   },
-  "mastery": {},
+  "mastery": {
+    "BDA-SQL-005": 0.77,
+    "BDA-SQL-009": 0.82,
+    "BDA-PY-002": 0.83
+  },
   "style_tags": [
-    "concise"
+    "code-first"
   ],
-  "expect_level": "beginner"
+  "expect_level": "advanced"
 }

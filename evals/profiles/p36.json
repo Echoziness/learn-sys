@@ -1,16 +1,19 @@
 {
   "learner_id": "p36",
-  "name": "硕士在读·市场营销",
+  "name": "专科毕业 2 年·金融学",
   "background": {
-    "education": "硕士在读",
-    "major": "市场营销",
+    "education": "专科毕业 2 年",
+    "major": "金融学",
     "goal": "提升职场竞争力",
-    "experience": "学过数据库原理课程，会多表 JOIN 查询，Python 仅会调包"
+    "experience": "工作中有 SQL 取数经验，熟悉 pandas，想系统补统计基础"
   },
-  "mastery": {},
+  "mastery": {
+    "BDA-PY-002": 0.73,
+    "BDA-PY-003": 0.86,
+    "BDA-ST-004": 0.81
+  },
   "style_tags": [
-    "code-first",
     "concise"
   ],
-  "expect_level": "intermediate"
+  "expect_level": "advanced"
 }

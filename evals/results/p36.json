@@ -1,0 +1,29 @@
+{
+  "learner_id": "p36",
+  "name": "专科毕业 2 年·金融学",
+  "expect_level": "advanced",
+  "diagnosed_level": "intermediate",
+  "session_id": "d2a5eb46a8454aef9f3dfa51e1f19f32",
+  "hallucination_rate": 0.0235,
+  "claims_total": 85,
+  "tier_match": {
+    "rate": 1.0,
+    "matched": 4,
+    "total": 4
+  },
+  "keyword_coverage": {
+    "rate": 1.0,
+    "hit": 20,
+    "total": 20
+  },
+  "topics_advanced": 4,
+  "mastery_mean": 0.7,
+  "masteries": {
+    "描述性统计": 0.661,
+    "数据可视化基本原则": 0.8,
+    "标准差与方差": 0.8,
+    "相关性分析": 0.339,
+    "正态分布与偏态": 0.8,
+    "假设检验与 p 值": 0.8
+  }
+}

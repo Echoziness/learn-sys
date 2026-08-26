@@ -1,15 +1,16 @@
 {
   "learner_id": "p08",
-  "name": "硕士毕业·护理学",
+  "name": "本科毕业 1 年·生物科学",
   "background": {
-    "education": "硕士毕业",
-    "major": "护理学",
-    "goal": "为考研大数据方向做准备",
-    "experience": "未接触过数据库、SQL 和任何编程语言，仅会 Office 基础操作"
+    "education": "本科毕业 1 年",
+    "major": "生物科学",
+    "goal": "转行数据运营",
+    "experience": "学过 C 语言基础，会用 Excel 做简单统计，未接触过数据库和 Python"
   },
   "mastery": {},
   "style_tags": [
-    "analogy-first"
+    "code-first",
+    "concise"
   ],
   "expect_level": "beginner"
 }

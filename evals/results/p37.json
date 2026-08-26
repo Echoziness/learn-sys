@@ -1,0 +1,29 @@
+{
+  "learner_id": "p37",
+  "name": "本科大三·机械工程（37）",
+  "expect_level": "intermediate",
+  "diagnosed_level": "beginner",
+  "session_id": "ecf508051fde492ba71260da2e7fe2cc",
+  "hallucination_rate": 0.0,
+  "claims_total": 67,
+  "tier_match": {
+    "rate": 0.8,
+    "matched": 4,
+    "total": 5
+  },
+  "keyword_coverage": {
+    "rate": 0.9615,
+    "hit": 25,
+    "total": 26
+  },
+  "topics_advanced": 5,
+  "mastery_mean": 0.7524,
+  "masteries": {
+    "关系型数据库基本概念": 0.8,
+    "SELECT 基础查询": 0.514,
+    "JOIN 表连接": 0.8,
+    "聚合函数与 GROUP BY": 0.8,
+    "WHERE 条件过滤": 0.8,
+    "ORDER BY 与 LIMIT": 0.8
+  }
+}

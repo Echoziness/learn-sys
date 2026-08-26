@@ -1,0 +1,29 @@
+{
+  "learner_id": "p38",
+  "name": "本科毕业 3 年·计算机科学",
+  "expect_level": "advanced",
+  "diagnosed_level": "intermediate",
+  "session_id": "13e88afc1ee144e49f768f671879bb43",
+  "hallucination_rate": 0.0,
+  "claims_total": 91,
+  "tier_match": {
+    "rate": 1.0,
+    "matched": 3,
+    "total": 3
+  },
+  "keyword_coverage": {
+    "rate": 1.0,
+    "hit": 14,
+    "total": 14
+  },
+  "topics_advanced": 3,
+  "mastery_mean": 0.7304,
+  "masteries": {
+    "关系型数据库基本概念": 0.8,
+    "SELECT 基础查询": 0.8,
+    "JOIN 表连接": 0.661,
+    "聚合函数与 GROUP BY": 0.661,
+    "WHERE 条件过滤": 0.661,
+    "ORDER BY 与 LIMIT": 0.8
+  }
+}

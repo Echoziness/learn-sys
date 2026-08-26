@@ -1,0 +1,28 @@
+{
+  "learner_id": "p17",
+  "name": "本科大三·电气工程",
+  "expect_level": "beginner",
+  "diagnosed_level": "beginner",
+  "session_id": "7bbbe02db31b463b96095a2f78e184e4",
+  "hallucination_rate": 0.0,
+  "claims_total": 65,
+  "tier_match": {
+    "rate": 1.0,
+    "matched": 4,
+    "total": 4
+  },
+  "keyword_coverage": {
+    "rate": 0.8235,
+    "hit": 14,
+    "total": 17
+  },
+  "topics_advanced": 4,
+  "mastery_mean": 0.7079,
+  "masteries": {
+    "关系型数据库基本概念": 0.8,
+    "pandas DataFrame 基础": 0.8,
+    "描述性统计": 0.339,
+    "SELECT 基础查询": 0.8,
+    "WHERE 条件过滤": 0.8
+  }
+}

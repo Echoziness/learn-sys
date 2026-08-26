@@ -1,0 +1,28 @@
+{
+  "learner_id": "p49",
+  "name": "硕士在读·人力资源管理",
+  "expect_level": "beginner",
+  "diagnosed_level": "beginner",
+  "session_id": "583872e1e2484f438383fd0b0e02cb3e",
+  "hallucination_rate": 0.0,
+  "claims_total": 74,
+  "tier_match": {
+    "rate": 1.0,
+    "matched": 3,
+    "total": 3
+  },
+  "keyword_coverage": {
+    "rate": 0.9231,
+    "hit": 12,
+    "total": 13
+  },
+  "topics_advanced": 3,
+  "mastery_mean": 0.6507,
+  "masteries": {
+    "关系型数据库基本概念": 0.8,
+    "pandas DataFrame 基础": 0.514,
+    "SELECT 基础查询": 0.8,
+    "ORDER BY 与 LIMIT": 0.339,
+    "WHERE 条件过滤": 0.8
+  }
+}

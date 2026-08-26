@@ -1,0 +1,29 @@
+{
+  "learner_id": "p26",
+  "name": "本科大二·工商管理学",
+  "expect_level": "advanced",
+  "diagnosed_level": "intermediate",
+  "session_id": "857fc72545184649be127208f549c4c3",
+  "hallucination_rate": 0.0,
+  "claims_total": 72,
+  "tier_match": {
+    "rate": 1.0,
+    "matched": 5,
+    "total": 5
+  },
+  "keyword_coverage": {
+    "rate": 1.0,
+    "hit": 25,
+    "total": 25
+  },
+  "topics_advanced": 5,
+  "mastery_mean": 0.7768,
+  "masteries": {
+    "关系型数据库基本概念": 0.8,
+    "SELECT 基础查询": 0.8,
+    "WHERE 条件过滤": 0.8,
+    "ORDER BY 与 LIMIT": 0.8,
+    "聚合函数与 GROUP BY": 0.8,
+    "HAVING 分组过滤": 0.661
+  }
+}

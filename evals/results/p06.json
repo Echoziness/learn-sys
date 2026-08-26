@@ -1,0 +1,30 @@
+{
+  "learner_id": "p06",
+  "name": "本科毕业 1 年·物流管理",
+  "expect_level": "intermediate",
+  "diagnosed_level": "intermediate",
+  "session_id": "528dbfda7fe34b2c81503984e02bf5f5",
+  "hallucination_rate": 0.0,
+  "claims_total": 69,
+  "tier_match": {
+    "rate": 1.0,
+    "matched": 7,
+    "total": 7
+  },
+  "keyword_coverage": {
+    "rate": 1.0,
+    "hit": 33,
+    "total": 33
+  },
+  "topics_advanced": 7,
+  "mastery_mean": 0.8,
+  "masteries": {
+    "关系型数据库基本概念": 0.8,
+    "数据预处理概述": 0.8,
+    "pandas DataFrame 基础": 0.8,
+    "SELECT 基础查询": 0.8,
+    "聚合函数与 GROUP BY": 0.8,
+    "JOIN 表连接": 0.8,
+    "WHERE 条件过滤": 0.8
+  }
+}

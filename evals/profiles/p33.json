@@ -1,15 +1,20 @@
 {
   "learner_id": "p33",
-  "name": "本科大二·工商管理学",
+  "name": "硕士毕业·会计学",
   "background": {
-    "education": "本科大二",
-    "major": "工商管理学",
-    "goal": "转行数据运营",
-    "experience": "学过 C 语言基础，会用 Excel 做简单统计，未接触过数据库和 Python"
+    "education": "硕士毕业",
+    "major": "会计学",
+    "goal": "转行商业分析",
+    "experience": "熟悉统计建模与 R 语言，用过 MySQL，Python 会写自动化脚本"
   },
-  "mastery": {},
+  "mastery": {
+    "BDA-DT-002": 0.75,
+    "BDA-SQL-006": 0.71,
+    "BDA-PY-002": 0.88,
+    "BDA-SQL-009": 0.72
+  },
   "style_tags": [
     "concise"
   ],
-  "expect_level": "beginner"
+  "expect_level": "advanced"
 }

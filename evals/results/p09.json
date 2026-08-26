@@ -1,0 +1,29 @@
+{
+  "learner_id": "p09",
+  "name": "本科大三·化学",
+  "expect_level": "intermediate",
+  "diagnosed_level": "beginner",
+  "session_id": "6b62d6f417e1453da755385d54dcdfd1",
+  "hallucination_rate": 0.0,
+  "claims_total": 86,
+  "tier_match": {
+    "rate": 1.0,
+    "matched": 5,
+    "total": 5
+  },
+  "keyword_coverage": {
+    "rate": 0.95,
+    "hit": 19,
+    "total": 20
+  },
+  "topics_advanced": 5,
+  "mastery_mean": 0.7768,
+  "masteries": {
+    "关系型数据库基本概念": 0.661,
+    "pandas DataFrame 基础": 0.8,
+    "SELECT 基础查询": 0.8,
+    "pandas 分组聚合": 0.8,
+    "pandas 数据过滤与排序": 0.8,
+    "WHERE 条件过滤": 0.8
+  }
+}

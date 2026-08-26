@@ -1,0 +1,28 @@
+{
+  "learner_id": "p22",
+  "name": "本科毕业 3 年·工商管理学",
+  "expect_level": "beginner",
+  "diagnosed_level": "beginner",
+  "session_id": "1013a4105ba645f5af33f985869a8bf1",
+  "hallucination_rate": 0.0,
+  "claims_total": 68,
+  "tier_match": {
+    "rate": 1.0,
+    "matched": 3,
+    "total": 3
+  },
+  "keyword_coverage": {
+    "rate": 0.9286,
+    "hit": 13,
+    "total": 14
+  },
+  "topics_advanced": 3,
+  "mastery_mean": 0.715,
+  "masteries": {
+    "关系型数据库基本概念": 0.8,
+    "SELECT 基础查询": 0.661,
+    "ORDER BY 与 LIMIT": 0.8,
+    "WHERE 条件过滤": 0.8,
+    "聚合函数与 GROUP BY": 0.514
+  }
+}

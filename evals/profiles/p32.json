@@ -1,15 +1,19 @@
 {
   "learner_id": "p32",
-  "name": "本科大二·电子信息",
+  "name": "硕士毕业·工业设计",
   "background": {
-    "education": "本科大二",
-    "major": "电子信息",
-    "goal": "胜任现有岗位的数据工作",
-    "experience": "学过数据库原理课程，会多表 JOIN 查询，Python 仅会调包"
+    "education": "硕士毕业",
+    "major": "工业设计",
+    "goal": "提升职场竞争力",
+    "experience": "做过 BI 报表开发，精通 SQL 多表查询与窗口函数，想转向分析岗"
   },
-  "mastery": {},
+  "mastery": {
+    "BDA-SQL-006": 0.7,
+    "BDA-ST-004": 0.8
+  },
   "style_tags": [
-    "analogy-first"
+    "code-first",
+    "concise"
   ],
-  "expect_level": "intermediate"
+  "expect_level": "advanced"
 }

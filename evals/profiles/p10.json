@@ -1,15 +1,20 @@
 {
   "learner_id": "p10",
-  "name": "专科毕业 2 年·电子信息",
+  "name": "硕士在读·土木工程",
   "background": {
-    "education": "专科毕业 2 年",
-    "major": "电子信息",
-    "goal": "转行数据运营",
-    "experience": "熟悉统计建模与 R 语言，用过 MySQL，Python 会写自动化脚本"
+    "education": "硕士在读",
+    "major": "土木工程",
+    "goal": "为考研大数据方向做准备",
+    "experience": "做过 BI 报表开发，精通 SQL 多表查询与窗口函数，想转向分析岗"
   },
-  "mastery": {},
+  "mastery": {
+    "BDA-ST-002": 0.87,
+    "BDA-PY-002": 0.89,
+    "BDA-SQL-005": 0.95,
+    "BDA-SQL-004": 0.91
+  },
   "style_tags": [
-    "code-first"
+    "concise"
   ],
   "expect_level": "advanced"
 }

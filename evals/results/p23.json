@@ -1,0 +1,31 @@
+{
+  "learner_id": "p23",
+  "name": "本科大三·土木工程",
+  "expect_level": "advanced",
+  "diagnosed_level": "advanced",
+  "session_id": "77ca76f3c02447da8ae581579ab84e1d",
+  "hallucination_rate": 0.0081,
+  "claims_total": 124,
+  "tier_match": {
+    "rate": 1.0,
+    "matched": 3,
+    "total": 3
+  },
+  "keyword_coverage": {
+    "rate": 1.0,
+    "hit": 15,
+    "total": 15
+  },
+  "topics_advanced": 3,
+  "mastery_mean": 0.6054,
+  "masteries": {
+    "关系型数据库基本概念": 0.8,
+    "pandas DataFrame 基础": 0.304,
+    "描述性统计": 0.8,
+    "数据可视化基本原则": 0.8,
+    "SQL 数据类型与 NULL": 0.514,
+    "索引与查询优化": 0.661,
+    "图表类型选择": 0.304,
+    "Matplotlib 与 Seaborn 基础": 0.661
+  }
+}

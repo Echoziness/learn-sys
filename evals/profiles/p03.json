@@ -7,10 +7,15 @@
     "goal": "补齐工程化短板，转向数据工程",
     "experience": "熟悉统计建模与 R 语言，用过 MySQL 做简单查询，Python 仅会调包"
   },
-  "mastery": {},
+  "mastery": {
+    "BDA-ST-001": 0.85,
+    "BDA-ST-002": 0.7,
+    "BDA-SQL-001": 0.65
+  },
   "style_tags": [
     "code-first",
     "concise"
   ],
-  "note": "手工精设：统计强工程弱——检验 advanced 判定与查漏式切片"
+  "expect_level": "advanced",
+  "note": "手工精设：统计强工程弱——检验 advanced 判定与查漏式切片（统计条目高掌握不应再进 gap）"
 }

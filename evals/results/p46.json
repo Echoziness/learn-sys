@@ -1,0 +1,28 @@
+{
+  "learner_id": "p46",
+  "name": "专科毕业 2 年·英语",
+  "expect_level": "beginner",
+  "diagnosed_level": "beginner",
+  "session_id": "d5345c5680324f1583d0ab4d9630b084",
+  "hallucination_rate": 0.0,
+  "claims_total": 78,
+  "tier_match": {
+    "rate": 1.0,
+    "matched": 2,
+    "total": 2
+  },
+  "keyword_coverage": {
+    "rate": 0.875,
+    "hit": 7,
+    "total": 8
+  },
+  "topics_advanced": 2,
+  "mastery_mean": 0.645,
+  "masteries": {
+    "关系型数据库基本概念": 0.661,
+    "数据预处理概述": 0.304,
+    "pandas DataFrame 基础": 0.661,
+    "SELECT 基础查询": 0.8,
+    "WHERE 条件过滤": 0.8
+  }
+}

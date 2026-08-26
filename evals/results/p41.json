@@ -1,0 +1,28 @@
+{
+  "learner_id": "p41",
+  "name": "本科大二·土木工程（41）",
+  "expect_level": "advanced",
+  "diagnosed_level": "intermediate",
+  "session_id": "8b607c155ed74cc9b55af9be19ac6aa3",
+  "hallucination_rate": 0.0,
+  "claims_total": 78,
+  "tier_match": {
+    "rate": 1.0,
+    "matched": 3,
+    "total": 3
+  },
+  "keyword_coverage": {
+    "rate": 1.0,
+    "hit": 14,
+    "total": 14
+  },
+  "topics_advanced": 3,
+  "mastery_mean": 0.7443,
+  "masteries": {
+    "pandas DataFrame 基础": 0.661,
+    "描述性统计": 0.8,
+    "数据可视化基本原则": 0.8,
+    "pandas 分组聚合": 0.8,
+    "pandas 数据过滤与排序": 0.661
+  }
+}

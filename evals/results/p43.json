@@ -1,0 +1,28 @@
+{
+  "learner_id": "p43",
+  "name": "本科大四·人力资源管理（43）",
+  "expect_level": "advanced",
+  "diagnosed_level": "intermediate",
+  "session_id": "f8af2550704d43aea2a14681a50bf075",
+  "hallucination_rate": 0.0123,
+  "claims_total": 81,
+  "tier_match": {
+    "rate": 1.0,
+    "matched": 2,
+    "total": 2
+  },
+  "keyword_coverage": {
+    "rate": 0.8889,
+    "hit": 8,
+    "total": 9
+  },
+  "topics_advanced": 2,
+  "mastery_mean": 0.6329,
+  "masteries": {
+    "pandas DataFrame 基础": 1.0,
+    "描述性统计": 0.304,
+    "数据可视化基本原则": 1.0,
+    "pandas 分组聚合": 0.304,
+    "pandas 数据过滤与排序": 0.557
+  }
+}

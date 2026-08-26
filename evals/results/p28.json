@@ -1,0 +1,31 @@
+{
+  "learner_id": "p28",
+  "name": "硕士在读·新闻传播学",
+  "expect_level": "advanced",
+  "diagnosed_level": "intermediate",
+  "session_id": "4c6daa13139a408790d9f7e6801d8902",
+  "hallucination_rate": 0.0103,
+  "claims_total": 97,
+  "tier_match": {
+    "rate": 1.0,
+    "matched": 6,
+    "total": 6
+  },
+  "keyword_coverage": {
+    "rate": 1.0,
+    "hit": 29,
+    "total": 29
+  },
+  "topics_advanced": 6,
+  "mastery_mean": 0.7826,
+  "masteries": {
+    "数据预处理概述": 0.304,
+    "描述性统计": 1.0,
+    "缺失值处理方法": 1.0,
+    "数据标准化与归一化": 1.0,
+    "标准差与方差": 0.557,
+    "假设检验与 p 值": 0.8,
+    "正态分布与偏态": 0.8,
+    "异常值检测与处理": 0.8
+  }
+}

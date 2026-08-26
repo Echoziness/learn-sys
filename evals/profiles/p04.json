@@ -5,11 +5,11 @@
     "education": "本科大三",
     "major": "机械工程",
     "goal": "为考研大数据方向做准备",
-    "experience": "用过 SQL 做增删改查，Python 会 pandas 基础操作"
+    "experience": "会一点 HTML 但没有编程基础，听说过 SQL 但从未写过，想从零入行"
   },
   "mastery": {},
   "style_tags": [
     "analogy-first"
   ],
-  "expect_level": "intermediate"
+  "expect_level": "beginner"
 }

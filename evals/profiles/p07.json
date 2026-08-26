@@ -1,15 +1,15 @@
 {
   "learner_id": "p07",
-  "name": "本科大二·人力资源管理",
+  "name": "本科大四·英语",
   "background": {
-    "education": "本科大二",
-    "major": "人力资源管理",
-    "goal": "提升职场竞争力",
-    "experience": "熟悉统计建模与 R 语言，用过 MySQL，Python 会写自动化脚本"
+    "education": "本科大四",
+    "major": "英语",
+    "goal": "胜任现有岗位的数据工作",
+    "experience": "销售岗转行，用过 Excel 函数但没接触过数据库，Python 零基础"
   },
   "mastery": {},
   "style_tags": [
     "analogy-first"
   ],
-  "expect_level": "advanced"
+  "expect_level": "beginner"
 }

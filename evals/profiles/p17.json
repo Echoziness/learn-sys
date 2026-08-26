@@ -1,16 +1,15 @@
 {
   "learner_id": "p17",
-  "name": "本科大三·软件工程",
+  "name": "本科大三·电气工程",
   "background": {
     "education": "本科大三",
-    "major": "软件工程",
-    "goal": "提升职场竞争力",
-    "experience": "会写简单 Python 脚本处理 Excel，未系统学过数据库"
+    "major": "电气工程",
+    "goal": "转行数据运营",
+    "experience": "文科背景，只写过课程论文，没碰过代码和数据库，日常用 Excel 记帐"
   },
   "mastery": {},
   "style_tags": [
-    "code-first",
     "concise"
   ],
-  "expect_level": "intermediate"
+  "expect_level": "beginner"
 }

@@ -1,16 +1,19 @@
 {
   "learner_id": "p48",
-  "name": "硕士毕业·工商管理学",
+  "name": "本科毕业 1 年·工商管理学",
   "background": {
-    "education": "硕士毕业",
+    "education": "本科毕业 1 年",
     "major": "工商管理学",
-    "goal": "转行数据运营",
-    "experience": "数据岗在职，日常用 SQL + Python，想补机器学习前的数据工程基础"
+    "goal": "转行数据分析",
+    "experience": "工作中有 SQL 取数经验，熟悉 pandas，想系统补统计基础"
   },
-  "mastery": {},
+  "mastery": {
+    "BDA-ST-002": 0.94,
+    "BDA-PY-003": 0.77,
+    "BDA-SQL-005": 0.86
+  },
   "style_tags": [
-    "analogy-first",
-    "step-by-step"
+    "analogy-first"
   ],
   "expect_level": "advanced"
 }

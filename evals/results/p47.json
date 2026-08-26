@@ -1,0 +1,39 @@
+{
+  "learner_id": "p47",
+  "name": "本科大三·汉语言文学（47）",
+  "expect_level": "advanced",
+  "diagnosed_level": "intermediate",
+  "session_id": "0d339c318bc4450db4b67424f0fff117",
+  "hallucination_rate": 0.0045,
+  "claims_total": 224,
+  "tier_match": {
+    "rate": 0.9091,
+    "matched": 10,
+    "total": 11
+  },
+  "keyword_coverage": {
+    "rate": 1.0,
+    "hit": 55,
+    "total": 55
+  },
+  "topics_advanced": 11,
+  "mastery_mean": 0.6815,
+  "masteries": {
+    "关系型数据库基本概念": 0.8,
+    "数据预处理概述": 0.304,
+    "pandas DataFrame 基础": 0.661,
+    "描述性统计": 1.0,
+    "数据可视化基本原则": 0.714,
+    "SELECT 基础查询": 0.643,
+    "缺失值处理方法": 0.714,
+    "pandas 分组聚合": 0.304,
+    "pandas 数据过滤与排序": 0.661,
+    "标准差与方差": 0.8,
+    "图表类型选择": 0.304,
+    "聚合函数与 GROUP BY": 0.8,
+    "pandas 数据清洗流程": 0.8,
+    "正态分布与偏态": 0.8,
+    "SQL 与 pandas 对比": 0.8,
+    "数据分析完整流程": 0.8
+  }
+}

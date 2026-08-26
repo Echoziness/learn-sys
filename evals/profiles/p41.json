@@ -1,15 +1,18 @@
 {
   "learner_id": "p41",
-  "name": "本科大三·物流管理",
+  "name": "本科大二·土木工程（41）",
   "background": {
-    "education": "本科大三",
-    "major": "物流管理",
-    "goal": "提升职场竞争力",
-    "experience": "学过数据库原理课程，会多表 JOIN 查询，Python 仅会调包"
+    "education": "本科大二",
+    "major": "土木工程",
+    "goal": "转行商业分析",
+    "experience": "做过 BI 报表开发，精通 SQL 多表查询与窗口函数，想转向分析岗"
   },
-  "mastery": {},
+  "mastery": {
+    "BDA-SQL-004": 0.89,
+    "BDA-ST-002": 0.86
+  },
   "style_tags": [
-    "concise"
+    "step-by-step"
   ],
-  "expect_level": "intermediate"
+  "expect_level": "advanced"
 }

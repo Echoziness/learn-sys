@@ -1,0 +1,28 @@
+{
+  "learner_id": "p08",
+  "name": "本科毕业 1 年·生物科学",
+  "expect_level": "beginner",
+  "diagnosed_level": "beginner",
+  "session_id": "df14b70af4d54d2e8b11a81df8fe75c1",
+  "hallucination_rate": 0.0,
+  "claims_total": 85,
+  "tier_match": {
+    "rate": 1.0,
+    "matched": 2,
+    "total": 2
+  },
+  "keyword_coverage": {
+    "rate": 1.0,
+    "hit": 8,
+    "total": 8
+  },
+  "topics_advanced": 2,
+  "mastery_mean": 0.6279,
+  "masteries": {
+    "关系型数据库基本概念": 0.661,
+    "pandas DataFrame 基础": 0.8,
+    "描述性统计": 0.661,
+    "SELECT 基础查询": 0.714,
+    "WHERE 条件过滤": 0.304
+  }
+}

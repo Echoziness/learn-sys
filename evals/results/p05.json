@@ -1,29 +1,29 @@
 {
   "learner_id": "p05",
   "name": "本科大四·电子信息",
-  "expect_level": "advanced",
-  "diagnosed_level": "intermediate",
-  "session_id": "8ed2840aa33045eb8c38d5587f9dd6d5",
+  "expect_level": "intermediate",
+  "diagnosed_level": "beginner",
+  "session_id": "0557e6387dbe4e3fa3eeb9598814d19e",
   "hallucination_rate": 0.0,
-  "claims_total": 80,
+  "claims_total": 93,
   "tier_match": {
     "rate": 1.0,
-    "matched": 5,
-    "total": 5
+    "matched": 4,
+    "total": 4
   },
   "keyword_coverage": {
     "rate": 1.0,
-    "hit": 25,
-    "total": 25
+    "hit": 20,
+    "total": 20
   },
-  "topics_advanced": 5,
-  "mastery_mean": 0.7768,
+  "topics_advanced": 4,
+  "mastery_mean": 0.694,
   "masteries": {
     "关系型数据库基本概念": 0.661,
-    "SELECT 基础查询": 0.8,
-    "ORDER BY 与 LIMIT": 0.8,
+    "pandas DataFrame 基础": 0.8,
+    "SELECT 基础查询": 0.304,
+    "WHERE 条件过滤": 0.8,
     "聚合函数与 GROUP BY": 0.8,
-    "JOIN 表连接": 0.8,
-    "WHERE 条件过滤": 0.8
+    "ORDER BY 与 LIMIT": 0.8
   }
 }

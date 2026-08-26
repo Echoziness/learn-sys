@@ -1,4 +1,4 @@
-"""种子数据全量校验（30 条）：schema 约束、前置存在/无环/难度单调、关键词字符在 content 内。
+"""种子数据全量校验（31 条）：schema 约束、前置存在/无环/难度单调、关键词字符在 content 内。
 
 与判分同口径：grade_answer 判定一个关键词命中 = 该关键词全部字符（去空格、小写）
 都出现在作答中（AGENTS.md §6 的 CJK 坑）。content 长度只做宽松 sanity——
@@ -27,7 +27,7 @@ def _content_chars(text: str) -> set[str]:
 
 
 def test_entries_count_and_id_format(entries):
-    assert len(entries) == 30
+    assert len(entries) == 31
     for e in entries:
         assert re.fullmatch(r"BDA-[A-Z]+-\d{3}", e.id), f"id 格式非法: {e.id}"
 
@@ -99,7 +99,7 @@ def test_topo_sort_covers_all_entries(entries):
         for e in entries
     }
     ordered = topo_sort(by_id, set(by_id))
-    assert len(ordered) == 30
+    assert len(ordered) == 31
 
 
 def test_content_length_sanity(entries):

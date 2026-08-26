@@ -1,13 +1,16 @@
 {
   "learner_id": "p21",
-  "name": "硕士毕业·汉语言文学",
+  "name": "本科大四·人力资源管理",
   "background": {
-    "education": "硕士毕业",
-    "major": "汉语言文学",
-    "goal": "搭建业务数据看板",
-    "experience": "会写简单 Python 脚本处理 Excel，未系统学过数据库"
+    "education": "本科大四",
+    "major": "人力资源管理",
+    "goal": "转行数据分析",
+    "experience": "运营岗三年，日常用 Excel 透视表，自学过两周 Python 语法"
   },
-  "mastery": {},
+  "mastery": {
+    "BDA-DB-001": 0.78,
+    "BDA-DT-001": 0.77
+  },
   "style_tags": [
     "step-by-step"
   ],

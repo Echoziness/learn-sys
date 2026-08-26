@@ -1,0 +1,30 @@
+{
+  "learner_id": "p34",
+  "name": "专科毕业 2 年·电气工程",
+  "expect_level": "intermediate",
+  "diagnosed_level": "beginner",
+  "session_id": "f66ed973293040649d2c5c7bff62ad58",
+  "hallucination_rate": 0.0,
+  "claims_total": 88,
+  "tier_match": {
+    "rate": 1.0,
+    "matched": 5,
+    "total": 5
+  },
+  "keyword_coverage": {
+    "rate": 0.9545,
+    "hit": 21,
+    "total": 22
+  },
+  "topics_advanced": 5,
+  "mastery_mean": 0.7663,
+  "masteries": {
+    "关系型数据库基本概念": 0.8,
+    "pandas DataFrame 基础": 0.8,
+    "描述性统计": 0.661,
+    "SELECT 基础查询": 1.0,
+    "pandas 数据过滤与排序": 1.0,
+    "聚合函数与 GROUP BY": 0.304,
+    "ORDER BY 与 LIMIT": 0.8
+  }
+}

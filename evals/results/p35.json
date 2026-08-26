@@ -1,0 +1,29 @@
+{
+  "learner_id": "p35",
+  "name": "本科毕业 1 年·汉语言文学",
+  "expect_level": "advanced",
+  "diagnosed_level": "intermediate",
+  "session_id": "7d402abddc454fd8865a9a5f8b50d851",
+  "hallucination_rate": 0.0,
+  "claims_total": 84,
+  "tier_match": {
+    "rate": 1.0,
+    "matched": 4,
+    "total": 4
+  },
+  "keyword_coverage": {
+    "rate": 1.0,
+    "hit": 18,
+    "total": 18
+  },
+  "topics_advanced": 4,
+  "mastery_mean": 0.7536,
+  "masteries": {
+    "关系型数据库基本概念": 0.8,
+    "pandas DataFrame 基础": 0.661,
+    "SELECT 基础查询": 0.8,
+    "WHERE 条件过滤": 0.8,
+    "ORDER BY 与 LIMIT": 0.8,
+    "JOIN 表连接": 0.661
+  }
+}

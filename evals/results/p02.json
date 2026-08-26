@@ -1,14 +1,14 @@
 {
   "learner_id": "p02",
   "name": "工科在读·有编程基础",
-  "expect_level": "",
+  "expect_level": "intermediate",
   "diagnosed_level": "beginner",
-  "session_id": "d2a423502e72442faa3cf22ecab67bce",
-  "hallucination_rate": 0.0294,
-  "claims_total": 68,
+  "session_id": "37d01fd9bfe046928c0fa06361fb752a",
+  "hallucination_rate": 0.0,
+  "claims_total": 61,
   "tier_match": {
-    "rate": 0.8,
-    "matched": 4,
+    "rate": 1.0,
+    "matched": 5,
     "total": 5
   },
   "keyword_coverage": {

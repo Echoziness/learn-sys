@@ -1,15 +1,17 @@
 {
   "learner_id": "p09",
-  "name": "硕士在读·生物科学",
+  "name": "本科大三·化学",
   "background": {
-    "education": "硕士在读",
-    "major": "生物科学",
-    "goal": "为考研大数据方向做准备",
-    "experience": "会写简单 Python 脚本处理 Excel，未系统学过数据库"
+    "education": "本科大三",
+    "major": "化学",
+    "goal": "胜任现有岗位的数据工作",
+    "experience": "运营岗三年，日常用 Excel 透视表，自学过两周 Python 语法"
   },
-  "mastery": {},
+  "mastery": {
+    "BDA-DT-001": 0.68
+  },
   "style_tags": [
-    "analogy-first"
+    "step-by-step"
   ],
   "expect_level": "intermediate"
 }

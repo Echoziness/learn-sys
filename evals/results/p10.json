@@ -1,0 +1,28 @@
+{
+  "learner_id": "p10",
+  "name": "硕士在读·土木工程",
+  "expect_level": "advanced",
+  "diagnosed_level": "intermediate",
+  "session_id": "0490b49ecda640dc9eb6c0f0feabcb54",
+  "hallucination_rate": 0.0233,
+  "claims_total": 86,
+  "tier_match": {
+    "rate": 1.0,
+    "matched": 2,
+    "total": 2
+  },
+  "keyword_coverage": {
+    "rate": 1.0,
+    "hit": 9,
+    "total": 9
+  },
+  "topics_advanced": 2,
+  "mastery_mean": 0.4814,
+  "masteries": {
+    "数据预处理概述": 0.304,
+    "pandas DataFrame 基础": 0.714,
+    "描述性统计": 0.304,
+    "数据可视化基本原则": 0.8,
+    "pandas 分组聚合": 0.286
+  }
+}

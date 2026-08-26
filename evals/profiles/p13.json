@@ -1,15 +1,18 @@
 {
   "learner_id": "p13",
-  "name": "本科毕业 3 年·化学",
+  "name": "硕士在读·金融学",
   "background": {
-    "education": "本科毕业 3 年",
-    "major": "化学",
+    "education": "硕士在读",
+    "major": "金融学",
     "goal": "提升职场竞争力",
-    "experience": "学过 C 语言基础，会用 Excel 做简单统计，未接触过数据库和 Python"
+    "experience": "工作中有 SQL 取数经验，熟悉 pandas，想系统补统计基础"
   },
-  "mastery": {},
+  "mastery": {
+    "BDA-PY-002": 0.9,
+    "BDA-SQL-004": 0.8
+  },
   "style_tags": [
-    "code-first"
+    "step-by-step"
   ],
-  "expect_level": "beginner"
+  "expect_level": "advanced"
 }

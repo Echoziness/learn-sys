@@ -1,12 +1,12 @@
 {
   "summary": {
-    "n_profiles": 1,
+    "n_profiles": 50,
     "sim_rate": 0.8,
-    "hallucination_rate": 0.0,
-    "tier_match_rate": 1.0,
-    "keyword_coverage": 1.0,
-    "mastery_mean": 0.7768,
-    "level_accuracy": 0.0,
+    "hallucination_rate": 0.0044,
+    "tier_match_rate": 0.9899,
+    "keyword_coverage": 0.9718,
+    "mastery_mean": 0.7112,
+    "level_accuracy": 0.48,
     "targets": {
       "hallucination_rate": "<0.05",
       "tier_match_rate": ">=0.85",
@@ -15,13 +15,734 @@
   },
   "results": [
     {
-      "learner_id": "p05",
-      "name": "本科大四·电子信息",
+      "learner_id": "p01",
+      "name": "零基础转行者·文科背景",
+      "expect_level": "beginner",
+      "diagnosed_level": "beginner",
+      "session_id": "7946840460444089856c71dff5e70e22",
+      "hallucination_rate": 0.0282,
+      "claims_total": 71,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 3,
+        "total": 3
+      },
+      "keyword_coverage": {
+        "rate": 0.8462,
+        "hit": 11,
+        "total": 13
+      },
+      "topics_advanced": 3,
+      "mastery_mean": 0.7443,
+      "masteries": {
+        "关系型数据库基本概念": 0.8,
+        "pandas DataFrame 基础": 0.661,
+        "SELECT 基础查询": 0.8,
+        "WHERE 条件过滤": 0.8,
+        "ORDER BY 与 LIMIT": 0.661
+      }
+    },
+    {
+      "learner_id": "p02",
+      "name": "工科在读·有编程基础",
+      "expect_level": "intermediate",
+      "diagnosed_level": "beginner",
+      "session_id": "37d01fd9bfe046928c0fa06361fb752a",
+      "hallucination_rate": 0.0,
+      "claims_total": 61,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 5,
+        "total": 5
+      },
+      "keyword_coverage": {
+        "rate": 0.9524,
+        "hit": 20,
+        "total": 21
+      },
+      "topics_advanced": 5,
+      "mastery_mean": 0.8,
+      "masteries": {
+        "关系型数据库基本概念": 0.8,
+        "pandas DataFrame 基础": 0.8,
+        "SELECT 基础查询": 0.8,
+        "pandas 数据过滤与排序": 0.8,
+        "WHERE 条件过滤": 0.8
+      }
+    },
+    {
+      "learner_id": "p03",
+      "name": "在职补短板·有工具经验",
       "expect_level": "advanced",
       "diagnosed_level": "intermediate",
-      "session_id": "8ed2840aa33045eb8c38d5587f9dd6d5",
+      "session_id": "9549c4e3de8b4a819f61b5c25ee434e4",
       "hallucination_rate": 0.0,
-      "claims_total": 80,
+      "claims_total": 100,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 5,
+        "total": 5
+      },
+      "keyword_coverage": {
+        "rate": 1.0,
+        "hit": 22,
+        "total": 22
+      },
+      "topics_advanced": 5,
+      "mastery_mean": 0.7092,
+      "masteries": {
+        "关系型数据库基本概念": 0.8,
+        "pandas DataFrame 基础": 0.304,
+        "SELECT 基础查询": 0.8,
+        "pandas 分组聚合": 0.8,
+        "pandas 数据过滤与排序": 0.8,
+        "WHERE 条件过滤": 0.661,
+        "ORDER BY 与 LIMIT": 0.8
+      }
+    },
+    {
+      "learner_id": "p04",
+      "name": "本科大三·机械工程",
+      "expect_level": "beginner",
+      "diagnosed_level": "beginner",
+      "session_id": "3198f82973ba41d99be3d53d38e29fb8",
+      "hallucination_rate": 0.0,
+      "claims_total": 65,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 4,
+        "total": 4
+      },
+      "keyword_coverage": {
+        "rate": 1.0,
+        "hit": 18,
+        "total": 18
+      },
+      "topics_advanced": 4,
+      "mastery_mean": 0.7079,
+      "masteries": {
+        "关系型数据库基本概念": 0.8,
+        "pandas DataFrame 基础": 0.339,
+        "SELECT 基础查询": 0.8,
+        "WHERE 条件过滤": 0.8,
+        "ORDER BY 与 LIMIT": 0.8
+      }
+    },
+    {
+      "learner_id": "p05",
+      "name": "本科大四·电子信息",
+      "expect_level": "intermediate",
+      "diagnosed_level": "beginner",
+      "session_id": "0557e6387dbe4e3fa3eeb9598814d19e",
+      "hallucination_rate": 0.0,
+      "claims_total": 93,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 4,
+        "total": 4
+      },
+      "keyword_coverage": {
+        "rate": 1.0,
+        "hit": 20,
+        "total": 20
+      },
+      "topics_advanced": 4,
+      "mastery_mean": 0.694,
+      "masteries": {
+        "关系型数据库基本概念": 0.661,
+        "pandas DataFrame 基础": 0.8,
+        "SELECT 基础查询": 0.304,
+        "WHERE 条件过滤": 0.8,
+        "聚合函数与 GROUP BY": 0.8,
+        "ORDER BY 与 LIMIT": 0.8
+      }
+    },
+    {
+      "learner_id": "p06",
+      "name": "本科毕业 1 年·物流管理",
+      "expect_level": "intermediate",
+      "diagnosed_level": "intermediate",
+      "session_id": "528dbfda7fe34b2c81503984e02bf5f5",
+      "hallucination_rate": 0.0,
+      "claims_total": 69,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 7,
+        "total": 7
+      },
+      "keyword_coverage": {
+        "rate": 1.0,
+        "hit": 33,
+        "total": 33
+      },
+      "topics_advanced": 7,
+      "mastery_mean": 0.8,
+      "masteries": {
+        "关系型数据库基本概念": 0.8,
+        "数据预处理概述": 0.8,
+        "pandas DataFrame 基础": 0.8,
+        "SELECT 基础查询": 0.8,
+        "聚合函数与 GROUP BY": 0.8,
+        "JOIN 表连接": 0.8,
+        "WHERE 条件过滤": 0.8
+      }
+    },
+    {
+      "learner_id": "p07",
+      "name": "本科大四·英语",
+      "expect_level": "beginner",
+      "diagnosed_level": "beginner",
+      "session_id": "1014d2b43fe64ab2828572bd56f9be1d",
+      "hallucination_rate": 0.013,
+      "claims_total": 77,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 2,
+        "total": 2
+      },
+      "keyword_coverage": {
+        "rate": 1.0,
+        "hit": 9,
+        "total": 9
+      },
+      "topics_advanced": 2,
+      "mastery_mean": 0.6643,
+      "masteries": {
+        "关系型数据库基本概念": 1.0,
+        "pandas DataFrame 基础": 0.661,
+        "描述性统计": 0.661,
+        "SELECT 基础查询": 0.2,
+        "WHERE 条件过滤": 0.8
+      }
+    },
+    {
+      "learner_id": "p08",
+      "name": "本科毕业 1 年·生物科学",
+      "expect_level": "beginner",
+      "diagnosed_level": "beginner",
+      "session_id": "df14b70af4d54d2e8b11a81df8fe75c1",
+      "hallucination_rate": 0.0,
+      "claims_total": 85,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 2,
+        "total": 2
+      },
+      "keyword_coverage": {
+        "rate": 1.0,
+        "hit": 8,
+        "total": 8
+      },
+      "topics_advanced": 2,
+      "mastery_mean": 0.6279,
+      "masteries": {
+        "关系型数据库基本概念": 0.661,
+        "pandas DataFrame 基础": 0.8,
+        "描述性统计": 0.661,
+        "SELECT 基础查询": 0.714,
+        "WHERE 条件过滤": 0.304
+      }
+    },
+    {
+      "learner_id": "p09",
+      "name": "本科大三·化学",
+      "expect_level": "intermediate",
+      "diagnosed_level": "beginner",
+      "session_id": "6b62d6f417e1453da755385d54dcdfd1",
+      "hallucination_rate": 0.0,
+      "claims_total": 86,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 5,
+        "total": 5
+      },
+      "keyword_coverage": {
+        "rate": 0.95,
+        "hit": 19,
+        "total": 20
+      },
+      "topics_advanced": 5,
+      "mastery_mean": 0.7768,
+      "masteries": {
+        "关系型数据库基本概念": 0.661,
+        "pandas DataFrame 基础": 0.8,
+        "SELECT 基础查询": 0.8,
+        "pandas 分组聚合": 0.8,
+        "pandas 数据过滤与排序": 0.8,
+        "WHERE 条件过滤": 0.8
+      }
+    },
+    {
+      "learner_id": "p10",
+      "name": "硕士在读·土木工程",
+      "expect_level": "advanced",
+      "diagnosed_level": "intermediate",
+      "session_id": "0490b49ecda640dc9eb6c0f0feabcb54",
+      "hallucination_rate": 0.0233,
+      "claims_total": 86,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 2,
+        "total": 2
+      },
+      "keyword_coverage": {
+        "rate": 1.0,
+        "hit": 9,
+        "total": 9
+      },
+      "topics_advanced": 2,
+      "mastery_mean": 0.4814,
+      "masteries": {
+        "数据预处理概述": 0.304,
+        "pandas DataFrame 基础": 0.714,
+        "描述性统计": 0.304,
+        "数据可视化基本原则": 0.8,
+        "pandas 分组聚合": 0.286
+      }
+    },
+    {
+      "learner_id": "p11",
+      "name": "本科大三·汉语言文学",
+      "expect_level": "intermediate",
+      "diagnosed_level": "intermediate",
+      "session_id": "4e246fe6baa648d793d2e2c55e34aea1",
+      "hallucination_rate": 0.0,
+      "claims_total": 74,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 3,
+        "total": 3
+      },
+      "keyword_coverage": {
+        "rate": 0.8462,
+        "hit": 11,
+        "total": 13
+      },
+      "topics_advanced": 3,
+      "mastery_mean": 0.7443,
+      "masteries": {
+        "pandas DataFrame 基础": 0.8,
+        "描述性统计": 0.8,
+        "数据可视化基本原则": 0.661,
+        "pandas 分组聚合": 0.661,
+        "pandas 数据过滤与排序": 0.8
+      }
+    },
+    {
+      "learner_id": "p12",
+      "name": "本科大三·软件工程",
+      "expect_level": "beginner",
+      "diagnosed_level": "beginner",
+      "session_id": "73e958adff2d420ea4a7c2c3664a6d08",
+      "hallucination_rate": 0.0,
+      "claims_total": 63,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 5,
+        "total": 5
+      },
+      "keyword_coverage": {
+        "rate": 0.9545,
+        "hit": 21,
+        "total": 22
+      },
+      "topics_advanced": 5,
+      "mastery_mean": 0.8,
+      "masteries": {
+        "关系型数据库基本概念": 0.8,
+        "pandas DataFrame 基础": 0.8,
+        "SELECT 基础查询": 0.8,
+        "WHERE 条件过滤": 0.8,
+        "ORDER BY 与 LIMIT": 0.8
+      }
+    },
+    {
+      "learner_id": "p13",
+      "name": "硕士在读·金融学",
+      "expect_level": "advanced",
+      "diagnosed_level": "intermediate",
+      "session_id": "4f0473ca12f44890961de6e8f09f9381",
+      "hallucination_rate": 0.0328,
+      "claims_total": 61,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 3,
+        "total": 3
+      },
+      "keyword_coverage": {
+        "rate": 0.9333,
+        "hit": 14,
+        "total": 15
+      },
+      "topics_advanced": 3,
+      "mastery_mean": 0.7443,
+      "masteries": {
+        "描述性统计": 0.8,
+        "标准差与方差": 0.661,
+        "相关性分析": 0.8,
+        "假设检验与 p 值": 0.661,
+        "正态分布与偏态": 0.8
+      }
+    },
+    {
+      "learner_id": "p14",
+      "name": "本科大三·市场营销",
+      "expect_level": "beginner",
+      "diagnosed_level": "beginner",
+      "session_id": "7c22032a317842c1b0ff29a1a76880fd",
+      "hallucination_rate": 0.0,
+      "claims_total": 52,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 5,
+        "total": 5
+      },
+      "keyword_coverage": {
+        "rate": 0.9091,
+        "hit": 20,
+        "total": 22
+      },
+      "topics_advanced": 5,
+      "mastery_mean": 0.8,
+      "masteries": {
+        "关系型数据库基本概念": 0.8,
+        "pandas DataFrame 基础": 0.8,
+        "SELECT 基础查询": 0.8,
+        "WHERE 条件过滤": 0.8,
+        "ORDER BY 与 LIMIT": 0.8
+      }
+    },
+    {
+      "learner_id": "p15",
+      "name": "硕士毕业·汉语言文学",
+      "expect_level": "beginner",
+      "diagnosed_level": "beginner",
+      "session_id": "e8cdb93add4e42eb855a266492b01455",
+      "hallucination_rate": 0.0,
+      "claims_total": 46,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 5,
+        "total": 5
+      },
+      "keyword_coverage": {
+        "rate": 1.0,
+        "hit": 22,
+        "total": 22
+      },
+      "topics_advanced": 5,
+      "mastery_mean": 0.8,
+      "masteries": {
+        "关系型数据库基本概念": 0.8,
+        "pandas DataFrame 基础": 0.8,
+        "数据可视化基本原则": 0.8,
+        "SELECT 基础查询": 0.8,
+        "WHERE 条件过滤": 0.8
+      }
+    },
+    {
+      "learner_id": "p16",
+      "name": "本科大四·工商管理学",
+      "expect_level": "advanced",
+      "diagnosed_level": "intermediate",
+      "session_id": "a80c078554704855a92770d44085a555",
+      "hallucination_rate": 0.0,
+      "claims_total": 69,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 5,
+        "total": 5
+      },
+      "keyword_coverage": {
+        "rate": 1.0,
+        "hit": 25,
+        "total": 25
+      },
+      "topics_advanced": 5,
+      "mastery_mean": 0.7232,
+      "masteries": {
+        "关系型数据库基本概念": 0.8,
+        "SELECT 基础查询": 0.8,
+        "ORDER BY 与 LIMIT": 0.8,
+        "聚合函数与 GROUP BY": 0.8,
+        "JOIN 表连接": 0.339,
+        "WHERE 条件过滤": 0.8
+      }
+    },
+    {
+      "learner_id": "p17",
+      "name": "本科大三·电气工程",
+      "expect_level": "beginner",
+      "diagnosed_level": "beginner",
+      "session_id": "7bbbe02db31b463b96095a2f78e184e4",
+      "hallucination_rate": 0.0,
+      "claims_total": 65,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 4,
+        "total": 4
+      },
+      "keyword_coverage": {
+        "rate": 0.8235,
+        "hit": 14,
+        "total": 17
+      },
+      "topics_advanced": 4,
+      "mastery_mean": 0.7079,
+      "masteries": {
+        "关系型数据库基本概念": 0.8,
+        "pandas DataFrame 基础": 0.8,
+        "描述性统计": 0.339,
+        "SELECT 基础查询": 0.8,
+        "WHERE 条件过滤": 0.8
+      }
+    },
+    {
+      "learner_id": "p18",
+      "name": "本科大四·英语（18）",
+      "expect_level": "intermediate",
+      "diagnosed_level": "intermediate",
+      "session_id": "60ca7f7580554fedabab8ff43d45f052",
+      "hallucination_rate": 0.0,
+      "claims_total": 117,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 4,
+        "total": 4
+      },
+      "keyword_coverage": {
+        "rate": 1.0,
+        "hit": 21,
+        "total": 21
+      },
+      "topics_advanced": 4,
+      "mastery_mean": 0.6781,
+      "masteries": {
+        "关系型数据库基本概念": 0.661,
+        "pandas DataFrame 基础": 0.243,
+        "描述性统计": 0.8,
+        "数据可视化基本原则": 0.661,
+        "SELECT 基础查询": 0.661,
+        "pandas 分组聚合": 0.8,
+        "JOIN 表连接": 0.8,
+        "聚合函数与 GROUP BY": 0.8
+      }
+    },
+    {
+      "learner_id": "p19",
+      "name": "本科大三·人力资源管理",
+      "expect_level": "advanced",
+      "diagnosed_level": "intermediate",
+      "session_id": "6a82dea69dd14e8e83b647f77795899b",
+      "hallucination_rate": 0.0163,
+      "claims_total": 123,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 7,
+        "total": 7
+      },
+      "keyword_coverage": {
+        "rate": 0.9688,
+        "hit": 31,
+        "total": 32
+      },
+      "topics_advanced": 7,
+      "mastery_mean": 0.7389,
+      "masteries": {
+        "数据预处理概述": 0.304,
+        "pandas DataFrame 基础": 0.8,
+        "描述性统计": 0.643,
+        "缺失值处理方法": 1.0,
+        "数据合并 concat 与 merge": 1.0,
+        "pandas 数据过滤与排序": 1.0,
+        "标准差与方差": 0.304,
+        "pandas 数据清洗流程": 0.8,
+        "假设检验与 p 值": 0.8
+      }
+    },
+    {
+      "learner_id": "p20",
+      "name": "本科毕业 3 年·物流管理",
+      "expect_level": "intermediate",
+      "diagnosed_level": "intermediate",
+      "session_id": "50083b25152347cb972194ce9e54b511",
+      "hallucination_rate": 0.0,
+      "claims_total": 87,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 7,
+        "total": 7
+      },
+      "keyword_coverage": {
+        "rate": 0.9667,
+        "hit": 29,
+        "total": 30
+      },
+      "topics_advanced": 7,
+      "mastery_mean": 0.7643,
+      "masteries": {
+        "关系型数据库基本概念": 0.8,
+        "pandas DataFrame 基础": 0.8,
+        "SELECT 基础查询": 0.8,
+        "pandas 分组聚合": 0.8,
+        "pandas 数据过滤与排序": 0.8,
+        "聚合函数与 GROUP BY": 0.514,
+        "JOIN 表连接": 0.8,
+        "WHERE 条件过滤": 0.8
+      }
+    },
+    {
+      "learner_id": "p21",
+      "name": "本科大四·人力资源管理",
+      "expect_level": "intermediate",
+      "diagnosed_level": "intermediate",
+      "session_id": "a764a779a07e42ae920f406020b18c76",
+      "hallucination_rate": 0.0,
+      "claims_total": 65,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 6,
+        "total": 6
+      },
+      "keyword_coverage": {
+        "rate": 1.0,
+        "hit": 29,
+        "total": 29
+      },
+      "topics_advanced": 6,
+      "mastery_mean": 0.8,
+      "masteries": {
+        "关系型数据库基本概念": 0.8,
+        "pandas DataFrame 基础": 0.8,
+        "SELECT 基础查询": 0.8,
+        "ORDER BY 与 LIMIT": 0.8,
+        "聚合函数与 GROUP BY": 0.8,
+        "WHERE 条件过滤": 0.8
+      }
+    },
+    {
+      "learner_id": "p22",
+      "name": "本科毕业 3 年·工商管理学",
+      "expect_level": "beginner",
+      "diagnosed_level": "beginner",
+      "session_id": "1013a4105ba645f5af33f985869a8bf1",
+      "hallucination_rate": 0.0,
+      "claims_total": 68,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 3,
+        "total": 3
+      },
+      "keyword_coverage": {
+        "rate": 0.9286,
+        "hit": 13,
+        "total": 14
+      },
+      "topics_advanced": 3,
+      "mastery_mean": 0.715,
+      "masteries": {
+        "关系型数据库基本概念": 0.8,
+        "SELECT 基础查询": 0.661,
+        "ORDER BY 与 LIMIT": 0.8,
+        "WHERE 条件过滤": 0.8,
+        "聚合函数与 GROUP BY": 0.514
+      }
+    },
+    {
+      "learner_id": "p23",
+      "name": "本科大三·土木工程",
+      "expect_level": "advanced",
+      "diagnosed_level": "advanced",
+      "session_id": "77ca76f3c02447da8ae581579ab84e1d",
+      "hallucination_rate": 0.0081,
+      "claims_total": 124,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 3,
+        "total": 3
+      },
+      "keyword_coverage": {
+        "rate": 1.0,
+        "hit": 15,
+        "total": 15
+      },
+      "topics_advanced": 3,
+      "mastery_mean": 0.6054,
+      "masteries": {
+        "关系型数据库基本概念": 0.8,
+        "pandas DataFrame 基础": 0.304,
+        "描述性统计": 0.8,
+        "数据可视化基本原则": 0.8,
+        "SQL 数据类型与 NULL": 0.514,
+        "索引与查询优化": 0.661,
+        "图表类型选择": 0.304,
+        "Matplotlib 与 Seaborn 基础": 0.661
+      }
+    },
+    {
+      "learner_id": "p24",
+      "name": "本科毕业 1 年·会计学",
+      "expect_level": "advanced",
+      "diagnosed_level": "intermediate",
+      "session_id": "1382f7487baa49f1a39e650d1899db95",
+      "hallucination_rate": 0.0139,
+      "claims_total": 72,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 2,
+        "total": 2
+      },
+      "keyword_coverage": {
+        "rate": 1.0,
+        "hit": 10,
+        "total": 10
+      },
+      "topics_advanced": 2,
+      "mastery_mean": 0.6136,
+      "masteries": {
+        "描述性统计": 0.661,
+        "数据可视化基本原则": 0.304,
+        "标准差与方差": 1.0,
+        "相关性分析": 0.304,
+        "正态分布与偏态": 0.8
+      }
+    },
+    {
+      "learner_id": "p25",
+      "name": "本科毕业 1 年·护理学",
+      "expect_level": "beginner",
+      "diagnosed_level": "beginner",
+      "session_id": "6c24045df2eb4322a2b3599f3b984e63",
+      "hallucination_rate": 0.0,
+      "claims_total": 79,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 2,
+        "total": 2
+      },
+      "keyword_coverage": {
+        "rate": 1.0,
+        "hit": 8,
+        "total": 8
+      },
+      "topics_advanced": 2,
+      "mastery_mean": 0.6871,
+      "masteries": {
+        "关系型数据库基本概念": 0.661,
+        "数据预处理概述": 0.514,
+        "SELECT 基础查询": 0.8,
+        "ORDER BY 与 LIMIT": 0.661,
+        "WHERE 条件过滤": 0.8
+      }
+    },
+    {
+      "learner_id": "p26",
+      "name": "本科大二·工商管理学",
+      "expect_level": "advanced",
+      "diagnosed_level": "intermediate",
+      "session_id": "857fc72545184649be127208f549c4c3",
+      "hallucination_rate": 0.0,
+      "claims_total": 72,
       "tier_match": {
         "rate": 1.0,
         "matched": 5,
@@ -35,12 +756,711 @@
       "topics_advanced": 5,
       "mastery_mean": 0.7768,
       "masteries": {
-        "关系型数据库基本概念": 0.661,
+        "关系型数据库基本概念": 0.8,
         "SELECT 基础查询": 0.8,
+        "WHERE 条件过滤": 0.8,
         "ORDER BY 与 LIMIT": 0.8,
+        "聚合函数与 GROUP BY": 0.8,
+        "HAVING 分组过滤": 0.661
+      }
+    },
+    {
+      "learner_id": "p27",
+      "name": "硕士毕业·工商管理学",
+      "expect_level": "advanced",
+      "diagnosed_level": "intermediate",
+      "session_id": "6cadce8f450d4f45b62c0c602ada3377",
+      "hallucination_rate": 0.0112,
+      "claims_total": 89,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 1,
+        "total": 1
+      },
+      "keyword_coverage": {
+        "rate": 1.0,
+        "hit": 4,
+        "total": 4
+      },
+      "topics_advanced": 1,
+      "mastery_mean": 0.5529,
+      "masteries": {
+        "数据预处理概述": 0.304,
+        "pandas DataFrame 基础": 0.661,
+        "数据可视化基本原则": 0.661,
+        "缺失值处理方法": 0.339,
+        "pandas 数据过滤与排序": 0.8
+      }
+    },
+    {
+      "learner_id": "p28",
+      "name": "硕士在读·新闻传播学",
+      "expect_level": "advanced",
+      "diagnosed_level": "intermediate",
+      "session_id": "4c6daa13139a408790d9f7e6801d8902",
+      "hallucination_rate": 0.0103,
+      "claims_total": 97,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 6,
+        "total": 6
+      },
+      "keyword_coverage": {
+        "rate": 1.0,
+        "hit": 29,
+        "total": 29
+      },
+      "topics_advanced": 6,
+      "mastery_mean": 0.7826,
+      "masteries": {
+        "数据预处理概述": 0.304,
+        "描述性统计": 1.0,
+        "缺失值处理方法": 1.0,
+        "数据标准化与归一化": 1.0,
+        "标准差与方差": 0.557,
+        "假设检验与 p 值": 0.8,
+        "正态分布与偏态": 0.8,
+        "异常值检测与处理": 0.8
+      }
+    },
+    {
+      "learner_id": "p29",
+      "name": "硕士毕业·计算机科学",
+      "expect_level": "beginner",
+      "diagnosed_level": "beginner",
+      "session_id": "dfc1f586451a4f6e87dd364351de8c90",
+      "hallucination_rate": 0.0,
+      "claims_total": 53,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 5,
+        "total": 5
+      },
+      "keyword_coverage": {
+        "rate": 0.9091,
+        "hit": 20,
+        "total": 22
+      },
+      "topics_advanced": 5,
+      "mastery_mean": 0.8,
+      "masteries": {
+        "关系型数据库基本概念": 0.8,
+        "pandas DataFrame 基础": 0.8,
+        "描述性统计": 0.8,
+        "SELECT 基础查询": 0.8,
+        "WHERE 条件过滤": 0.8
+      }
+    },
+    {
+      "learner_id": "p30",
+      "name": "硕士毕业·工商管理学（30）",
+      "expect_level": "intermediate",
+      "diagnosed_level": "intermediate",
+      "session_id": "0611fa72726f4024b0825ae2dc203947",
+      "hallucination_rate": 0.0,
+      "claims_total": 76,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 2,
+        "total": 2
+      },
+      "keyword_coverage": {
+        "rate": 1.0,
+        "hit": 8,
+        "total": 8
+      },
+      "topics_advanced": 2,
+      "mastery_mean": 0.6871,
+      "masteries": {
+        "数据预处理概述": 0.8,
+        "pandas DataFrame 基础": 0.661,
+        "数据可视化基本原则": 0.661,
+        "pandas 数据过滤与排序": 0.8,
+        "pandas 分组聚合": 0.514
+      }
+    },
+    {
+      "learner_id": "p31",
+      "name": "本科大二·土木工程",
+      "expect_level": "beginner",
+      "diagnosed_level": "beginner",
+      "session_id": "be6fe6b30b3b437ba0502515b7681704",
+      "hallucination_rate": 0.0,
+      "claims_total": 96,
+      "tier_match": {
+        "rate": 0.0,
+        "matched": 0,
+        "total": 0
+      },
+      "keyword_coverage": {
+        "rate": 0.0,
+        "hit": 0,
+        "total": 0
+      },
+      "topics_advanced": 0,
+      "mastery_mean": 0.5114,
+      "masteries": {
+        "关系型数据库基本概念": 0.661,
+        "pandas DataFrame 基础": 0.271,
+        "描述性统计": 0.661,
+        "SELECT 基础查询": 0.304,
+        "WHERE 条件过滤": 0.661
+      }
+    },
+    {
+      "learner_id": "p32",
+      "name": "硕士毕业·工业设计",
+      "expect_level": "advanced",
+      "diagnosed_level": "intermediate",
+      "session_id": "b1879bdc6b484d61ad97f993c02c4166",
+      "hallucination_rate": 0.0,
+      "claims_total": 72,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 3,
+        "total": 3
+      },
+      "keyword_coverage": {
+        "rate": 1.0,
+        "hit": 14,
+        "total": 14
+      },
+      "topics_advanced": 3,
+      "mastery_mean": 0.68,
+      "masteries": {
+        "pandas DataFrame 基础": 0.339,
+        "描述性统计": 0.8,
+        "数据可视化基本原则": 0.8,
+        "pandas 分组聚合": 0.661,
+        "pandas 数据过滤与排序": 0.8
+      }
+    },
+    {
+      "learner_id": "p33",
+      "name": "硕士毕业·会计学",
+      "expect_level": "advanced",
+      "diagnosed_level": "intermediate",
+      "session_id": "fefe39aa496949af94c4a9429780151b",
+      "hallucination_rate": 0.0,
+      "claims_total": 89,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 3,
+        "total": 3
+      },
+      "keyword_coverage": {
+        "rate": 1.0,
+        "hit": 16,
+        "total": 16
+      },
+      "topics_advanced": 3,
+      "mastery_mean": 0.6173,
+      "masteries": {
+        "关系型数据库基本概念": 0.304,
+        "SELECT 基础查询": 0.8,
+        "聚合函数与 GROUP BY": 0.8,
+        "WHERE 条件过滤": 0.339,
+        "ORDER BY 与 LIMIT": 0.8,
+        "JOIN 表连接": 0.661
+      }
+    },
+    {
+      "learner_id": "p34",
+      "name": "专科毕业 2 年·电气工程",
+      "expect_level": "intermediate",
+      "diagnosed_level": "beginner",
+      "session_id": "f66ed973293040649d2c5c7bff62ad58",
+      "hallucination_rate": 0.0,
+      "claims_total": 88,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 5,
+        "total": 5
+      },
+      "keyword_coverage": {
+        "rate": 0.9545,
+        "hit": 21,
+        "total": 22
+      },
+      "topics_advanced": 5,
+      "mastery_mean": 0.7663,
+      "masteries": {
+        "关系型数据库基本概念": 0.8,
+        "pandas DataFrame 基础": 0.8,
+        "描述性统计": 0.661,
+        "SELECT 基础查询": 1.0,
+        "pandas 数据过滤与排序": 1.0,
+        "聚合函数与 GROUP BY": 0.304,
+        "ORDER BY 与 LIMIT": 0.8
+      }
+    },
+    {
+      "learner_id": "p35",
+      "name": "本科毕业 1 年·汉语言文学",
+      "expect_level": "advanced",
+      "diagnosed_level": "intermediate",
+      "session_id": "7d402abddc454fd8865a9a5f8b50d851",
+      "hallucination_rate": 0.0,
+      "claims_total": 84,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 4,
+        "total": 4
+      },
+      "keyword_coverage": {
+        "rate": 1.0,
+        "hit": 18,
+        "total": 18
+      },
+      "topics_advanced": 4,
+      "mastery_mean": 0.7536,
+      "masteries": {
+        "关系型数据库基本概念": 0.8,
+        "pandas DataFrame 基础": 0.661,
+        "SELECT 基础查询": 0.8,
+        "WHERE 条件过滤": 0.8,
+        "ORDER BY 与 LIMIT": 0.8,
+        "JOIN 表连接": 0.661
+      }
+    },
+    {
+      "learner_id": "p36",
+      "name": "专科毕业 2 年·金融学",
+      "expect_level": "advanced",
+      "diagnosed_level": "intermediate",
+      "session_id": "d2a5eb46a8454aef9f3dfa51e1f19f32",
+      "hallucination_rate": 0.0235,
+      "claims_total": 85,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 4,
+        "total": 4
+      },
+      "keyword_coverage": {
+        "rate": 1.0,
+        "hit": 20,
+        "total": 20
+      },
+      "topics_advanced": 4,
+      "mastery_mean": 0.7,
+      "masteries": {
+        "描述性统计": 0.661,
+        "数据可视化基本原则": 0.8,
+        "标准差与方差": 0.8,
+        "相关性分析": 0.339,
+        "正态分布与偏态": 0.8,
+        "假设检验与 p 值": 0.8
+      }
+    },
+    {
+      "learner_id": "p37",
+      "name": "本科大三·机械工程（37）",
+      "expect_level": "intermediate",
+      "diagnosed_level": "beginner",
+      "session_id": "ecf508051fde492ba71260da2e7fe2cc",
+      "hallucination_rate": 0.0,
+      "claims_total": 67,
+      "tier_match": {
+        "rate": 0.8,
+        "matched": 4,
+        "total": 5
+      },
+      "keyword_coverage": {
+        "rate": 0.9615,
+        "hit": 25,
+        "total": 26
+      },
+      "topics_advanced": 5,
+      "mastery_mean": 0.7524,
+      "masteries": {
+        "关系型数据库基本概念": 0.8,
+        "SELECT 基础查询": 0.514,
+        "JOIN 表连接": 0.8,
+        "聚合函数与 GROUP BY": 0.8,
+        "WHERE 条件过滤": 0.8,
+        "ORDER BY 与 LIMIT": 0.8
+      }
+    },
+    {
+      "learner_id": "p38",
+      "name": "本科毕业 3 年·计算机科学",
+      "expect_level": "advanced",
+      "diagnosed_level": "intermediate",
+      "session_id": "13e88afc1ee144e49f768f671879bb43",
+      "hallucination_rate": 0.0,
+      "claims_total": 91,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 3,
+        "total": 3
+      },
+      "keyword_coverage": {
+        "rate": 1.0,
+        "hit": 14,
+        "total": 14
+      },
+      "topics_advanced": 3,
+      "mastery_mean": 0.7304,
+      "masteries": {
+        "关系型数据库基本概念": 0.8,
+        "SELECT 基础查询": 0.8,
+        "JOIN 表连接": 0.661,
+        "聚合函数与 GROUP BY": 0.661,
+        "WHERE 条件过滤": 0.661,
+        "ORDER BY 与 LIMIT": 0.8
+      }
+    },
+    {
+      "learner_id": "p39",
+      "name": "本科毕业 3 年·物流管理（39）",
+      "expect_level": "advanced",
+      "diagnosed_level": "intermediate",
+      "session_id": "4d722ce2254347158b0e7f49610e4f55",
+      "hallucination_rate": 0.0,
+      "claims_total": 58,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 3,
+        "total": 3
+      },
+      "keyword_coverage": {
+        "rate": 1.0,
+        "hit": 15,
+        "total": 15
+      },
+      "topics_advanced": 3,
+      "mastery_mean": 0.7343,
+      "masteries": {
+        "描述性统计": 1.0,
+        "标准差与方差": 0.514,
+        "相关性分析": 0.557,
+        "正态分布与偏态": 0.8,
+        "假设检验与 p 值": 0.8
+      }
+    },
+    {
+      "learner_id": "p40",
+      "name": "本科毕业 3 年·会计学",
+      "expect_level": "advanced",
+      "diagnosed_level": "intermediate",
+      "session_id": "3b55c7092e2f4530aa92a157498e0140",
+      "hallucination_rate": 0.0,
+      "claims_total": 65,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 6,
+        "total": 6
+      },
+      "keyword_coverage": {
+        "rate": 0.9667,
+        "hit": 29,
+        "total": 30
+      },
+      "topics_advanced": 6,
+      "mastery_mean": 0.8,
+      "masteries": {
+        "关系型数据库基本概念": 0.8,
+        "SELECT 基础查询": 0.8,
+        "JOIN 表连接": 0.8,
+        "聚合函数与 GROUP BY": 0.8,
+        "WHERE 条件过滤": 0.8,
+        "ORDER BY 与 LIMIT": 0.8
+      }
+    },
+    {
+      "learner_id": "p41",
+      "name": "本科大二·土木工程（41）",
+      "expect_level": "advanced",
+      "diagnosed_level": "intermediate",
+      "session_id": "8b607c155ed74cc9b55af9be19ac6aa3",
+      "hallucination_rate": 0.0,
+      "claims_total": 78,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 3,
+        "total": 3
+      },
+      "keyword_coverage": {
+        "rate": 1.0,
+        "hit": 14,
+        "total": 14
+      },
+      "topics_advanced": 3,
+      "mastery_mean": 0.7443,
+      "masteries": {
+        "pandas DataFrame 基础": 0.661,
+        "描述性统计": 0.8,
+        "数据可视化基本原则": 0.8,
+        "pandas 分组聚合": 0.8,
+        "pandas 数据过滤与排序": 0.661
+      }
+    },
+    {
+      "learner_id": "p42",
+      "name": "本科毕业 3 年·软件工程",
+      "expect_level": "intermediate",
+      "diagnosed_level": "intermediate",
+      "session_id": "0357dac2ac0547098837816f420b9237",
+      "hallucination_rate": 0.0,
+      "claims_total": 102,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 6,
+        "total": 6
+      },
+      "keyword_coverage": {
+        "rate": 1.0,
+        "hit": 29,
+        "total": 29
+      },
+      "topics_advanced": 6,
+      "mastery_mean": 0.7455,
+      "masteries": {
+        "关系型数据库基本概念": 0.661,
+        "pandas DataFrame 基础": 1.0,
+        "数据可视化基本原则": 0.8,
+        "SELECT 基础查询": 0.304,
+        "Matplotlib 与 Seaborn 基础": 0.8,
         "聚合函数与 GROUP BY": 0.8,
         "JOIN 表连接": 0.8,
         "WHERE 条件过滤": 0.8
+      }
+    },
+    {
+      "learner_id": "p43",
+      "name": "本科大四·人力资源管理（43）",
+      "expect_level": "advanced",
+      "diagnosed_level": "intermediate",
+      "session_id": "f8af2550704d43aea2a14681a50bf075",
+      "hallucination_rate": 0.0123,
+      "claims_total": 81,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 2,
+        "total": 2
+      },
+      "keyword_coverage": {
+        "rate": 0.8889,
+        "hit": 8,
+        "total": 9
+      },
+      "topics_advanced": 2,
+      "mastery_mean": 0.6329,
+      "masteries": {
+        "pandas DataFrame 基础": 1.0,
+        "描述性统计": 0.304,
+        "数据可视化基本原则": 1.0,
+        "pandas 分组聚合": 0.304,
+        "pandas 数据过滤与排序": 0.557
+      }
+    },
+    {
+      "learner_id": "p44",
+      "name": "本科大二·化学",
+      "expect_level": "advanced",
+      "diagnosed_level": "intermediate",
+      "session_id": "aff15321eefa4669b038c05968187491",
+      "hallucination_rate": 0.0,
+      "claims_total": 119,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 2,
+        "total": 2
+      },
+      "keyword_coverage": {
+        "rate": 1.0,
+        "hit": 10,
+        "total": 10
+      },
+      "topics_advanced": 2,
+      "mastery_mean": 0.7005,
+      "masteries": {
+        "数据预处理概述": 0.661,
+        "描述性统计": 0.8,
+        "数据可视化基本原则": 0.661,
+        "数据标准化与归一化": 0.661,
+        "标准差与方差": 0.661,
+        "假设检验与 p 值": 0.661,
+        "正态分布与偏态": 0.8
+      }
+    },
+    {
+      "learner_id": "p45",
+      "name": "本科大四·英语（45）",
+      "expect_level": "beginner",
+      "diagnosed_level": "beginner",
+      "session_id": "070859ec6a4a478ca3ca3b844e99cb96",
+      "hallucination_rate": 0.0,
+      "claims_total": 52,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 4,
+        "total": 4
+      },
+      "keyword_coverage": {
+        "rate": 0.9444,
+        "hit": 17,
+        "total": 18
+      },
+      "topics_advanced": 4,
+      "mastery_mean": 0.7429,
+      "masteries": {
+        "关系型数据库基本概念": 0.8,
+        "pandas DataFrame 基础": 0.514,
+        "描述性统计": 0.8,
+        "SELECT 基础查询": 0.8,
+        "WHERE 条件过滤": 0.8
+      }
+    },
+    {
+      "learner_id": "p46",
+      "name": "专科毕业 2 年·英语",
+      "expect_level": "beginner",
+      "diagnosed_level": "beginner",
+      "session_id": "d5345c5680324f1583d0ab4d9630b084",
+      "hallucination_rate": 0.0,
+      "claims_total": 78,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 2,
+        "total": 2
+      },
+      "keyword_coverage": {
+        "rate": 0.875,
+        "hit": 7,
+        "total": 8
+      },
+      "topics_advanced": 2,
+      "mastery_mean": 0.645,
+      "masteries": {
+        "关系型数据库基本概念": 0.661,
+        "数据预处理概述": 0.304,
+        "pandas DataFrame 基础": 0.661,
+        "SELECT 基础查询": 0.8,
+        "WHERE 条件过滤": 0.8
+      }
+    },
+    {
+      "learner_id": "p47",
+      "name": "本科大三·汉语言文学（47）",
+      "expect_level": "advanced",
+      "diagnosed_level": "intermediate",
+      "session_id": "0d339c318bc4450db4b67424f0fff117",
+      "hallucination_rate": 0.0045,
+      "claims_total": 224,
+      "tier_match": {
+        "rate": 0.9091,
+        "matched": 10,
+        "total": 11
+      },
+      "keyword_coverage": {
+        "rate": 1.0,
+        "hit": 55,
+        "total": 55
+      },
+      "topics_advanced": 11,
+      "mastery_mean": 0.6815,
+      "masteries": {
+        "关系型数据库基本概念": 0.8,
+        "数据预处理概述": 0.304,
+        "pandas DataFrame 基础": 0.661,
+        "描述性统计": 1.0,
+        "数据可视化基本原则": 0.714,
+        "SELECT 基础查询": 0.643,
+        "缺失值处理方法": 0.714,
+        "pandas 分组聚合": 0.304,
+        "pandas 数据过滤与排序": 0.661,
+        "标准差与方差": 0.8,
+        "图表类型选择": 0.304,
+        "聚合函数与 GROUP BY": 0.8,
+        "pandas 数据清洗流程": 0.8,
+        "正态分布与偏态": 0.8,
+        "SQL 与 pandas 对比": 0.8,
+        "数据分析完整流程": 0.8
+      }
+    },
+    {
+      "learner_id": "p48",
+      "name": "本科毕业 1 年·工商管理学",
+      "expect_level": "advanced",
+      "diagnosed_level": "intermediate",
+      "session_id": "a0d0ff8dd81d4f12bdda68cfdb85244c",
+      "hallucination_rate": 0.0167,
+      "claims_total": 60,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 3,
+        "total": 3
+      },
+      "keyword_coverage": {
+        "rate": 1.0,
+        "hit": 15,
+        "total": 15
+      },
+      "topics_advanced": 3,
+      "mastery_mean": 0.6729,
+      "masteries": {
+        "描述性统计": 0.661,
+        "数据可视化基本原则": 0.304,
+        "标准差与方差": 0.8,
+        "正态分布与偏态": 0.8,
+        "假设检验与 p 值": 0.8
+      }
+    },
+    {
+      "learner_id": "p49",
+      "name": "硕士在读·人力资源管理",
+      "expect_level": "beginner",
+      "diagnosed_level": "beginner",
+      "session_id": "583872e1e2484f438383fd0b0e02cb3e",
+      "hallucination_rate": 0.0,
+      "claims_total": 74,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 3,
+        "total": 3
+      },
+      "keyword_coverage": {
+        "rate": 0.9231,
+        "hit": 12,
+        "total": 13
+      },
+      "topics_advanced": 3,
+      "mastery_mean": 0.6507,
+      "masteries": {
+        "关系型数据库基本概念": 0.8,
+        "pandas DataFrame 基础": 0.514,
+        "SELECT 基础查询": 0.8,
+        "ORDER BY 与 LIMIT": 0.339,
+        "WHERE 条件过滤": 0.8
+      }
+    },
+    {
+      "learner_id": "p50",
+      "name": "本科毕业 3 年·软件工程（50）",
+      "expect_level": "beginner",
+      "diagnosed_level": "beginner",
+      "session_id": "e328ab5dbe134582a4d774ff9d7b6830",
+      "hallucination_rate": 0.0,
+      "claims_total": 66,
+      "tier_match": {
+        "rate": 1.0,
+        "matched": 4,
+        "total": 4
+      },
+      "keyword_coverage": {
+        "rate": 0.9524,
+        "hit": 20,
+        "total": 21
+      },
+      "topics_advanced": 4,
+      "mastery_mean": 0.7721,
+      "masteries": {
+        "关系型数据库基本概念": 0.8,
+        "SELECT 基础查询": 0.8,
+        "ORDER BY 与 LIMIT": 0.8,
+        "WHERE 条件过滤": 0.661,
+        "聚合函数与 GROUP BY": 0.8
       }
     }
   ]

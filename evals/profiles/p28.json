@@ -1,15 +1,20 @@
 {
   "learner_id": "p28",
-  "name": "本科毕业 3 年·英语",
+  "name": "硕士在读·新闻传播学",
   "background": {
-    "education": "本科毕业 3 年",
-    "major": "英语",
-    "goal": "拿到数据分析实习",
-    "experience": "数据岗在职，日常用 SQL + Python，想补机器学习前的数据工程基础"
+    "education": "硕士在读",
+    "major": "新闻传播学",
+    "goal": "转行数据分析",
+    "experience": "工作中有 SQL 取数经验，熟悉 pandas，想系统补统计基础"
   },
-  "mastery": {},
+  "mastery": {
+    "BDA-SQL-005": 0.78,
+    "BDA-SQL-004": 0.92,
+    "BDA-ST-004": 0.76,
+    "BDA-ST-002": 0.75
+  },
   "style_tags": [
-    "code-first"
+    "concise"
   ],
   "expect_level": "advanced"
 }

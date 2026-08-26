@@ -1,0 +1,28 @@
+{
+  "learner_id": "p07",
+  "name": "本科大四·英语",
+  "expect_level": "beginner",
+  "diagnosed_level": "beginner",
+  "session_id": "1014d2b43fe64ab2828572bd56f9be1d",
+  "hallucination_rate": 0.013,
+  "claims_total": 77,
+  "tier_match": {
+    "rate": 1.0,
+    "matched": 2,
+    "total": 2
+  },
+  "keyword_coverage": {
+    "rate": 1.0,
+    "hit": 9,
+    "total": 9
+  },
+  "topics_advanced": 2,
+  "mastery_mean": 0.6643,
+  "masteries": {
+    "关系型数据库基本概念": 1.0,
+    "pandas DataFrame 基础": 0.661,
+    "描述性统计": 0.661,
+    "SELECT 基础查询": 0.2,
+    "WHERE 条件过滤": 0.8
+  }
+}

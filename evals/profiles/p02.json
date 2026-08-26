@@ -11,5 +11,6 @@
   "style_tags": [
     "code-first"
   ],
+  "expect_level": "intermediate",
   "note": "手工精设：有编程迁移能力——检验 intermediate 判定与代码优先风格"
 }

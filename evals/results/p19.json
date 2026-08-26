@@ -1,0 +1,32 @@
+{
+  "learner_id": "p19",
+  "name": "本科大三·人力资源管理",
+  "expect_level": "advanced",
+  "diagnosed_level": "intermediate",
+  "session_id": "6a82dea69dd14e8e83b647f77795899b",
+  "hallucination_rate": 0.0163,
+  "claims_total": 123,
+  "tier_match": {
+    "rate": 1.0,
+    "matched": 7,
+    "total": 7
+  },
+  "keyword_coverage": {
+    "rate": 0.9688,
+    "hit": 31,
+    "total": 32
+  },
+  "topics_advanced": 7,
+  "mastery_mean": 0.7389,
+  "masteries": {
+    "数据预处理概述": 0.304,
+    "pandas DataFrame 基础": 0.8,
+    "描述性统计": 0.643,
+    "缺失值处理方法": 1.0,
+    "数据合并 concat 与 merge": 1.0,
+    "pandas 数据过滤与排序": 1.0,
+    "标准差与方差": 0.304,
+    "pandas 数据清洗流程": 0.8,
+    "假设检验与 p 值": 0.8
+  }
+}

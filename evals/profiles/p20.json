@@ -1,15 +1,19 @@
 {
   "learner_id": "p20",
-  "name": "本科大三·市场营销",
+  "name": "本科毕业 3 年·物流管理",
   "background": {
-    "education": "本科大三",
-    "major": "市场营销",
-    "goal": "胜任现有岗位的数据工作",
-    "experience": "用过 SQL 做增删改查，Python 会 pandas 基础操作"
+    "education": "本科毕业 3 年",
+    "major": "物流管理",
+    "goal": "拿到数据分析实习",
+    "experience": "上过统计学课程，会画简单柱状图，SQL 只写过单表 SELECT"
   },
-  "mastery": {},
+  "mastery": {
+    "BDA-PY-001": 0.68,
+    "BDA-VIS-001": 0.6,
+    "BDA-ST-001": 0.64
+  },
   "style_tags": [
-    "concise"
+    "code-first"
   ],
   "expect_level": "intermediate"
 }

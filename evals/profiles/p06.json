@@ -1,16 +1,19 @@
 {
   "learner_id": "p06",
-  "name": "本科大二·土木工程",
+  "name": "本科毕业 1 年·物流管理",
   "background": {
-    "education": "本科大二",
-    "major": "土木工程",
-    "goal": "提升职场竞争力",
-    "experience": "用过 SQL 做增删改查，Python 会 pandas 基础操作"
+    "education": "本科毕业 1 年",
+    "major": "物流管理",
+    "goal": "转行数据分析",
+    "experience": "上过统计学课程，会画简单柱状图，SQL 只写过单表 SELECT"
   },
-  "mastery": {},
+  "mastery": {
+    "BDA-VIS-001": 0.7,
+    "BDA-SQL-001": 0.75,
+    "BDA-SQL-003": 0.55
+  },
   "style_tags": [
-    "analogy-first",
-    "step-by-step"
+    "analogy-first"
   ],
   "expect_level": "intermediate"
 }

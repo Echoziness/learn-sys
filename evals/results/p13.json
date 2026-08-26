@@ -1,0 +1,28 @@
+{
+  "learner_id": "p13",
+  "name": "硕士在读·金融学",
+  "expect_level": "advanced",
+  "diagnosed_level": "intermediate",
+  "session_id": "4f0473ca12f44890961de6e8f09f9381",
+  "hallucination_rate": 0.0328,
+  "claims_total": 61,
+  "tier_match": {
+    "rate": 1.0,
+    "matched": 3,
+    "total": 3
+  },
+  "keyword_coverage": {
+    "rate": 0.9333,
+    "hit": 14,
+    "total": 15
+  },
+  "topics_advanced": 3,
+  "mastery_mean": 0.7443,
+  "masteries": {
+    "描述性统计": 0.8,
+    "标准差与方差": 0.661,
+    "相关性分析": 0.8,
+    "假设检验与 p 值": 0.661,
+    "正态分布与偏态": 0.8
+  }
+}

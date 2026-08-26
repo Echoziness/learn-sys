@@ -1,15 +1,18 @@
 {
   "learner_id": "p11",
-  "name": "专科毕业 2 年·化学",
+  "name": "本科大三·汉语言文学",
   "background": {
-    "education": "专科毕业 2 年",
-    "major": "化学",
+    "education": "本科大三",
+    "major": "汉语言文学",
     "goal": "为考研大数据方向做准备",
-    "experience": "未接触过数据库、SQL 和任何编程语言，仅会 Office 基础操作"
+    "experience": "学过数据库原理课程，会多表 JOIN 查询，Python 仅会调包"
   },
-  "mastery": {},
+  "mastery": {
+    "BDA-SQL-002": 0.64,
+    "BDA-DT-001": 0.72
+  },
   "style_tags": [
     "concise"
   ],
-  "expect_level": "beginner"
+  "expect_level": "intermediate"
 }

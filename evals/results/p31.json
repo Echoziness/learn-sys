@@ -1,0 +1,28 @@
+{
+  "learner_id": "p31",
+  "name": "本科大二·土木工程",
+  "expect_level": "beginner",
+  "diagnosed_level": "beginner",
+  "session_id": "be6fe6b30b3b437ba0502515b7681704",
+  "hallucination_rate": 0.0,
+  "claims_total": 96,
+  "tier_match": {
+    "rate": 0.0,
+    "matched": 0,
+    "total": 0
+  },
+  "keyword_coverage": {
+    "rate": 0.0,
+    "hit": 0,
+    "total": 0
+  },
+  "topics_advanced": 0,
+  "mastery_mean": 0.5114,
+  "masteries": {
+    "关系型数据库基本概念": 0.661,
+    "pandas DataFrame 基础": 0.271,
+    "描述性统计": 0.661,
+    "SELECT 基础查询": 0.304,
+    "WHERE 条件过滤": 0.661
+  }
+}

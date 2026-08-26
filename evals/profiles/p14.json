@@ -1,15 +1,15 @@
 {
   "learner_id": "p14",
-  "name": "本科毕业 1 年·会计学",
+  "name": "本科大三·市场营销",
   "background": {
-    "education": "本科毕业 1 年",
-    "major": "会计学",
-    "goal": "转行数据运营",
-    "experience": "用过 SQL 做增删改查，Python 会 pandas 基础操作"
+    "education": "本科大三",
+    "major": "市场营销",
+    "goal": "胜任现有岗位的数据工作",
+    "experience": "会一点 HTML 但没有编程基础，听说过 SQL 但从未写过，想从零入行"
   },
   "mastery": {},
   "style_tags": [
-    "code-first"
+    "concise"
   ],
-  "expect_level": "intermediate"
+  "expect_level": "beginner"
 }
