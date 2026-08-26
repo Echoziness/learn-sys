@@ -1,7 +1,7 @@
 """交付包生成器：源码归档 + 部署说明 + 测试数据包 + 清单校验。
 
 产出（默认 dist/交付包/）：
-├── 01-源码/learn-sys-源码.tar.gz     # git archive HEAD（含 data/seeds；不含模型/DB——均未入 git）
+├── 01-源码/learn-sys-源码.zip        # git archive HEAD（含 data/seeds；不含模型/DB——均未入 git）
 ├── 02-部署说明.md                    # docs/部署说明.md 副本
 ├── 03-测试数据包/
 │   ├── README.md                     # 三组会话选型说明 + 文件清单
@@ -14,9 +14,10 @@
 事件最多）/ 学不会组（资源包最少）；也可 --sessions 显式指定。
 
 用法：
-    uv run python scripts/pack_delivery.py                # 自动选型
+    uv run python scripts/pack_delivery.py                # 自动选型 3 组代表会话
+    uv run python scripts/pack_delivery.py --all-sessions # 导出全部 50 组评测会话完整数据源
     uv run python scripts/pack_delivery.py --sessions <id1>,<id2>,<id3>
-    uv run python scripts/pack_delivery.py --zip-model    # 附带打包 4.5G 模型（耗时）
+    uv run python scripts/pack_delivery.py --zip-model    # 附带打包 4.5G 模型（存储模式，数分钟）
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import NoReturn
@@ -41,12 +43,16 @@ DB_PATH = ROOT / "data" / "knowledge.db"
 SEEDS_ENTRIES = ROOT / "data" / "seeds" / "bigdata-analysis" / "entries.jsonl"
 DEPLOY_DOC = ROOT / "docs" / "部署说明.md"
 BGE_DIR = ROOT / "data" / "bge-m3"
+BGE_MODEL_DIR = BGE_DIR / "models--BAAI--bge-m3"
 
 ROLE_LABEL = {
     "正向推进": "主题推进顺畅、资源包齐备的代表会话",
     "回退博弈": "含打回重写与连错回退——多智能体协同决策中间数据最完整",
     "学不会": "模拟学生全程未达标——系统不强产空洞资源的差异化决策样本",
+    "评测样本": "50 组全量评测会话之一的完整数据源",
 }
+
+PROFILES_DIR = ROOT / "evals" / "profiles"
 
 
 def _fail(msg: str) -> NoReturn:
@@ -71,11 +77,12 @@ def _human_size(n: float) -> str:
 
 
 def archive_source(out_dir: Path) -> Path:
-    """git archive HEAD：只含已追踪文件（模型/DB/评测结果未入 git，天然排除）。"""
-    out = out_dir / "01-源码" / "learn-sys-源码.tar.gz"
+    """git archive HEAD：只含已追踪文件（模型/DB 未入 git，天然排除）。
+    用 zip 而非默认 tar.gz：评委大概率在 Windows 开箱，zip 右键即解、与模型包形态统一。"""
+    out = out_dir / "01-源码" / "learn-sys-源码.zip"
     out.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(
-        ["git", "archive", "--format=tar.gz", "--prefix=learn-sys/", "HEAD", "-o", str(out)],
+        ["git", "archive", "--format=zip", "--prefix=learn-sys/", "HEAD", "-o", str(out)],
         cwd=ROOT,
         check=True,
         capture_output=True,
@@ -83,7 +90,9 @@ def archive_source(out_dir: Path) -> Path:
     return out
 
 
-def select_sessions(conn: sqlite3.Connection, explicit: list[str] | None) -> list[tuple[str, str]]:
+def select_sessions(
+    conn: sqlite3.Connection, explicit: list[str] | None, all_sessions: bool = False
+) -> list[tuple[str, str]]:
     """返回 [(session_id, 角色标签)]。显式指定时角色统一记为「指定」。"""
     if explicit:
         for sid in explicit:
@@ -94,13 +103,17 @@ def select_sessions(conn: sqlite3.Connection, explicit: list[str] | None) -> lis
         return [(sid, "指定") for sid in explicit]
 
     completed = "SELECT session_id FROM sessions WHERE finished_at IS NOT NULL"
-    # ① 正向推进：资源包最多
+    # ① 正向推进：资源包最多（限定评测画像会话，排除冒烟会话）
+    eval_learners = {p.stem for p in PROFILES_DIR.glob("*.json")}
     row = conn.execute(
         f"SELECT p.session_id, COUNT(*) c FROM resource_packages p "
-        f"WHERE p.session_id IN ({completed}) GROUP BY p.session_id ORDER BY c DESC LIMIT 1"
+        f"JOIN sessions s ON s.session_id = p.session_id "
+        f"WHERE p.session_id IN ({completed}) AND s.learner_id IN ({','.join('?' * len(eval_learners))}) "
+        f"GROUP BY p.session_id ORDER BY c DESC LIMIT 1",
+        tuple(sorted(eval_learners)),
     ).fetchone()
     if row is None:
-        _fail("库中无带资源包的已完成会话，无法自动选型——请先跑评测或用 --sessions 指定")
+        _fail("库中无带资源包的已完成评测会话，无法自动选型——请先跑评测或用 --sessions 指定")
     positive = row[0]
     # ② 回退博弈：含 topic_regress 事件且回退次数最多（排除①）
     row = conn.execute(
@@ -119,6 +132,21 @@ def select_sessions(conn: sqlite3.Connection, explicit: list[str] | None) -> lis
         (positive, regress),
     ).fetchone()
     struggling = row[0] if row else positive
+    if all_sessions:
+        # 全部已完成评测会话（含三组代表，保留角色叙事）
+        rep_role = {positive: "正向推进", regress: "回退博弈", struggling: "学不会"}
+        rows = conn.execute(
+            "SELECT session_id, learner_id FROM sessions "
+            "WHERE finished_at IS NOT NULL ORDER BY learner_id, created_at"
+        ).fetchall()
+        picked = [
+            (r["session_id"], rep_role.get(r["session_id"], "评测样本"))
+            for r in rows
+            if r["learner_id"] in eval_learners
+        ]
+        if not picked:
+            _fail("库中无已完成的评测会话")
+        return picked
     return [(positive, "正向推进"), (regress, "回退博弈"), (struggling, "学不会")]
 
 
@@ -212,11 +240,39 @@ def export_session(store: SessionStore, sid: str, role: str, dest: Path) -> dict
     }
 
 
+def zip_bge_model(model_zip: Path) -> None:
+    """打包 BGE 缓存的精简可部署形态：refs/main + 活跃 revision 快照（实体化）。
+
+    HF cache 的快照文件是指向 blobs/ 的符号链接——直接入 zip 会跟随链接把权重双份写入；
+    而符号链接存进 zip 在 Windows 解压不可靠。故只物化 refs/main 指向的唯一活跃
+    revision（加载只走 refs→快照路径，不碰 blobs），丢弃旧 revision 与 blobs：
+    实测 8.7G → 2.2G。ZIP_STORED：fp32 权重不可压缩，跳过 deflate 提速。
+
+    zip 内顶层即 data/（解压后直接得到 data/bge-m3/models--BAAI--bge-m3/，零搬运）。"""
+    refs_main = BGE_MODEL_DIR / "refs" / "main"
+    if not refs_main.exists():
+        _fail("BGE 缓存缺 refs/main，无法确定活跃 revision")
+    active_rev = refs_main.read_text().strip()
+    snapshot = BGE_MODEL_DIR / "snapshots" / active_rev
+    if not snapshot.is_dir():
+        _fail(f"BGE 缓存缺活跃 revision 快照：{active_rev}")
+    with zipfile.ZipFile(model_zip, "w", compression=zipfile.ZIP_STORED) as zf:
+        # 顶层为 "data/"，解压到源码根目录即自动得到 data/bge-m3/models--BAAI--bge-m3/
+        zf.write(refs_main, f"data/{BGE_DIR.name}/{BGE_MODEL_DIR.name}/refs/main")
+        for p in sorted(snapshot.rglob("*")):
+            if p.is_file():  # is_file 跟随符号链接，写入时自动物化为真实内容
+                arcname = Path("data") / BGE_DIR.name / BGE_MODEL_DIR.name / "snapshots" / active_rev
+                zf.write(p, arcname / p.relative_to(snapshot))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="生成交付包（源码归档 + 测试数据包 + 清单校验）")
     parser.add_argument("--out", default=str(ROOT / "dist" / "交付包"), help="输出目录")
     parser.add_argument("--sessions", help="显式指定会话 ID（逗号分隔），跳过自动选型")
-    parser.add_argument("--zip-model", action="store_true", help="同时打包 data/bge-m3（约 4.5G，耗时）")
+    parser.add_argument("--all-sessions", action="store_true", help="导出全部已完成评测会话（50 组）")
+    parser.add_argument(
+        "--zip-model", action="store_true", help="同时打包 data/bge-m3（约 4.5G，存储模式数分钟）"
+    )
     args = parser.parse_args()
 
     # ---------- 前置校验 ----------
@@ -252,7 +308,7 @@ def main() -> None:
     shutil.copy(SEEDS_ENTRIES, tdp / "01-知识库切片" / "bigdata-analysis-entries.jsonl")
 
     explicit = [s.strip() for s in args.sessions.split(",")] if args.sessions else None
-    picked = select_sessions(conn, explicit)
+    picked = select_sessions(conn, explicit, all_sessions=args.all_sessions)
     keywords = {
         r["id"]: json.loads(r["keywords"] or "[]")
         for r in conn.execute("SELECT id, keywords FROM knowledge_entries")
@@ -314,11 +370,9 @@ def main() -> None:
     model_zip = out / "04-模型文件" / "bge-m3.zip"
     if args.zip_model:
         model_zip.parent.mkdir(parents=True, exist_ok=True)
-        print("[3/4] 打包模型（约 4.5G，需数分钟）…")
-        shutil.make_archive(
-            str(model_zip.with_suffix("")), "zip", root_dir=BGE_DIR.parent, base_dir=BGE_DIR.name
-        )
-        model_note = f"已打包：{_human_size(model_zip.stat().st_size)}"
+        print("[3/4] 打包模型（精简缓存形态：活跃 revision 实体化，约 2.2G，数分钟）…")
+        zip_bge_model(model_zip)
+        model_note = f"已打包（存储模式，精简缓存形态）：{_human_size(model_zip.stat().st_size)}"
     else:
         print("[3/4] 跳过模型打包（--zip-model 可开启）")
 
@@ -326,7 +380,11 @@ def main() -> None:
     head = subprocess.run(
         ["git", "rev-parse", "HEAD"], cwd=ROOT, check=True, capture_output=True
     ).stdout.decode().strip()
-    bge_size = _human_size(sum(p.stat().st_size for p in BGE_DIR.rglob("*") if p.is_file()))
+    bge_zip_estimate = _human_size(
+        sum(p.stat().st_size for p in (BGE_MODEL_DIR / "snapshots" / (
+            (BGE_MODEL_DIR / "refs" / "main").read_text().strip()
+        )).rglob("*") if p.is_file())
+    ) if (BGE_MODEL_DIR / "refs" / "main").exists() else "—"
     manifest = [
         "# 交付包清单（MANIFEST）",
         "",
@@ -338,10 +396,11 @@ def main() -> None:
         f"- `01-源码/{src.name}`（{_human_size(src.stat().st_size)}，SHA-256 `{_sha256(src)[:16]}…`）",
         "- `02-部署说明.md` —— 本地部署步骤（环境要求/模型放置/.env 配置/验收）",
         f"- `03-测试数据包/` —— 知识库切片 + {len(summaries)} 组完整输入输出示例",
-        f"- 模型文件（BGE-M3，解压后约 {bge_size}）：{model_note}",
+        f"- 模型文件（BGE-M3 精简缓存，解压后约 {bge_zip_estimate}）：{model_note}",
         "",
         "```bash",
-        "cd <源码根目录>/data && unzip <交付包>/04-模型文件/bge-m3.zip   # 得到 data/bge-m3/",
+        "# 在源码根目录执行（zip 内顶层为 data/，解压即到位，零搬运）：",
+        "cd <源码根目录> && unzip <交付包>/04-模型文件/bge-m3.zip   # 得到 data/bge-m3/models--BAAI--bge-m3/",
         "```",
         "",
         "## 提交前校验",

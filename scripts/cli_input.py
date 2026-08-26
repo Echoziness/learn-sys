@@ -10,7 +10,10 @@
 
 from __future__ import annotations
 
-import readline  # noqa: F401  启用行编辑：input() 获得左右键移动光标能力
+import contextlib
+
+with contextlib.suppress(ImportError):
+    import readline  # noqa: F401  启用行编辑：input() 获得左右键移动光标能力（仅 Unix）
 from dataclasses import dataclass
 
 
