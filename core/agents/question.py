@@ -111,17 +111,42 @@ class QuestionInput(TypedDict, total=False):
 
 
 def _format_claims(claims: list[dict[str, Any]] | list[str]) -> str:
-    """教学论断渲染：兼容 {text, claim_type} dict 与裸 str（旧调用方）。"""
+    """教学论断渲染：兼容 {text, claim_type} dict 与裸 str（旧调用方）。
+
+    支持可选的 round_no 标注（追问注入带轮次，其他调用方无此字段时不显示）。"""
     lines: list[str] = []
     for c in claims or []:
         if isinstance(c, str):
             lines.append(f"- {c}")
         else:
             tag = c.get("claim_type", "core")
-            lines.append(f"- [{tag}] {c.get('text', '')}")
+            round_tag = f"第 {c['round_no']} 轮 · " if "round_no" in c else ""
+            lines.append(f"- [{round_tag}{tag}] {c.get('text', '')}")
     return "\n".join(lines) if lines else (
         "（未提供——若本轮无教学内容，请基于条目内容提问，深度以条目原文为上限）"
     )
+
+
+def _format_current_question(q: dict[str, Any]) -> str:
+    """当前题目渲染（追问注入用）：题干 + 选项 + 题型 + 学生作答（如有）。
+
+    不注入 expected/expected_label（服务端校验隔离，防泄题）。"""
+    prompt = q.get("prompt", "")
+    if not prompt:
+        return ""
+    options = q.get("options", [])
+    question_type = q.get("question_type", "")
+    is_scaffold = q.get("question_id", "").endswith("_scaffold")
+    is_followup = q.get("question_id", "").endswith("_followup")
+    kind = "脚手架" if is_scaffold else "追问确认" if is_followup else question_type or ""
+    lines = [f"【当前题目】（{kind}）", prompt]
+    for opt in options:
+        lines.append(f"  {opt}")
+    if q.get("student_answer"):
+        lines.append(f"\n【学生作答】{q['student_answer']}")
+        if q.get("is_correct") is not None:
+            lines.append(f"（判定：{'正确' if q['is_correct'] else '错误'}）")
+    return "\n".join(lines) + "\n"
 
 
 def _retry_section(retry: dict[str, Any] | None) -> str:
@@ -309,15 +334,19 @@ FOLLOWUP_PROMPT = """学生在学习过程中主动提出了一个疑问。请�
 【知识条目】
 {entry}
 
-【本轮教学论断】（澄清与正确选项的内容边界，不得引入之外的新概念）
+【教学论断】（澄清与正确选项的内容边界，不得引入之外的新概念；
+  优先以最新一轮的论断回应，早前轮次仅作补充锚点）
 {claims}
 
+{current_question_section}
 【学生的提问】{student_question}
 
 判断标准（is_valid）：
-- true：疑问与本条目概念或本轮教学内容相关，是一个真实的知识性疑问；
-- false：寒暄/闲聊、与本主题完全无关、空泛到无法回应（如"太难了怎么办"）、
-  或只是复述题干没有疑问。拿不准时判 false（fail-closed）。
+- true：疑问与本条目概念、教学论断相关，是一个真实的知识性疑问；
+  或针对【当前题目】的题干/选项/作答提出疑问（学生正在面对这道题，
+  对它的任何疑问都视为有效）；
+- false：寒暄/闲聊、与本主题完全无关、空泛到无法回应（如"太难了怎么办"）。
+  拿不准时判 false（fail-closed）。
 
 is_valid=true 时同时生成三件套：
 1. question：确认型选择题题干——直接针对学生的疑问点提问（15-60 字）。
@@ -361,11 +390,14 @@ async def followup_node(
 ) -> FollowupJudgement:
     """动态追问判定 + 生成：LLM 一次调用判定疑问有效性，有效则生成确认题三件套。
 
+    注入上下文：条目 + 教学论断（带轮次标注，最新轮优先）+ 当前题目（可选）。
     与错题脚手架同构（复用 validate_scaffold 的来源可溯校验）。fail-closed：
     LLM 异常或三件套校验不过 → 判无效（学生收到判定理由，不进澄清管线）。
     """
     entry = state.get("entry") or {}
     claims = state.get("taught_claims", [])
+    current_question = state.get("current_question") or {}
+    current_question_section = _format_current_question(current_question) if current_question else ""
     try:
         output = await provider.chat_validated(
             [
@@ -383,6 +415,7 @@ async def followup_node(
                             indent=2,
                         ),
                         claims=_format_claims(claims),
+                        current_question_section=current_question_section,
                         student_question=state.get("student_question", ""),
                     ),
                 }

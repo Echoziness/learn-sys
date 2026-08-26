@@ -729,6 +729,28 @@ class TeachLoop:
 
     # ---------- 动态追问（与错题→脚手架同构的澄清管线，2026-08-26） ----------
 
+    def _current_question(self, session_id: str, entry_id: str) -> dict[str, Any]:
+        """当前题目上下文（追问注入用）：最近主教学轮的题目 + 学生作答 + 判定。
+
+        学生追问通常发生在面对当前题目时——注入本题让 followup_node 能回答
+        针对题干/选项/作答的疑问。不注入 expected/expected_label（防泄题）。
+        """
+        for r in reversed(self._store.load_rounds(session_id, entry_id)):
+            q = r.get("question")
+            if q and not str(r.get("decision", "")).endswith("followup"):
+                result: dict[str, Any] = {
+                    "question_id": q.get("question_id", ""),
+                    "question_type": q.get("question_type", ""),
+                    "prompt": q.get("prompt", ""),
+                    "options": q.get("options", []),
+                }
+                if r.get("answer") is not None:
+                    result["student_answer"] = r["answer"]
+                    grade = r.get("grade") or {}
+                    result["is_correct"] = grade.get("is_correct", False)
+                return result
+        return {}
+
     def pending_followup(self, session_id: str, entry_id: str) -> dict[str, Any] | None:
         """未作答的追问侧车轮（前端刷新恢复与作答入口）。"""
         for r in reversed(self._store.load_rounds(session_id, entry_id)):
@@ -749,6 +771,8 @@ class TeachLoop:
         self._store.delete_pending_followup(ctx.session_id, entry_id)
         round_no = self.progress(ctx.session_id, entry_id).next_round_no
 
+        # 当前题目注入：让学生对本题的疑问能被 followup_node 看见（题干+作答+判定）
+        current_question = self._current_question(ctx.session_id, entry.id)
         judgement = await followup_node(
             {
                 "entry": {
@@ -759,6 +783,7 @@ class TeachLoop:
                 },
                 "taught_claims": self._all_taught_claims(ctx.session_id, entry.id),
                 "student_question": question_text,
+                "current_question": current_question,
             },
             provider=self._provider,
             model=self._settings.question_model,
@@ -874,7 +899,7 @@ class TeachLoop:
         )
 
     def _all_taught_claims(self, session_id: str, entry_id: str) -> list[dict[str, Any]]:
-        """深度契约输入：该条目**全部轮次**教学论断的累积（带 claim_type，D2 可重建）。
+        """深度契约输入：该条目**全部轮次**教学论断的累积（带 claim_type + round_no，D2 可重建）。
 
         深度契约语义是"已教过即可考"——只取最近一轮会浪费此前轮次的教学素材，
         且防重考（previous_questions）已阻止旧角度重问。按文本去重（极端情况
@@ -887,11 +912,15 @@ class TeachLoop:
                 continue
             if event.payload.get("entry_id") != entry_id:
                 continue
+            round_no = event.payload.get("round_no")
             for c in event.payload.get("claims", []):
                 if c["text"] in seen:
                     continue
                 seen.add(c["text"])
-                claims.append({"text": c["text"], "claim_type": c.get("claim_type", "core")})
+                claim: dict[str, Any] = {"text": c["text"], "claim_type": c.get("claim_type", "core")}
+                if round_no is not None:
+                    claim["round_no"] = int(round_no)
+                claims.append(claim)
         return claims
 
     def _taught_previously(self, session_id: str, entry_id: str) -> list[str]:
