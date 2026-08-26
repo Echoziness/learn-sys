@@ -4,9 +4,9 @@ import { cn } from "@/lib/utils";
 import type { ClaimType, Decision, Verdict } from "@/lib/types";
 
 const CLAIM_META: Record<string, { label: string; className: string }> = {
-  core: { label: "core · 条目覆盖", className: "bg-blue-100 text-blue-800" },
-  extension: { label: "extension · 错因扩展", className: "bg-amber-100 text-amber-800" },
-  procedure_guide: { label: "procedure · 实操指南", className: "bg-cyan-100 text-cyan-800" },
+  core: { label: "core · 条目覆盖", className: "bg-sky-50 text-sky-700" },
+  extension: { label: "extension · 错因扩展", className: "bg-amber-50 text-amber-700" },
+  procedure_guide: { label: "procedure · 实操指南", className: "bg-cyan-50 text-cyan-700" },
 };
 
 export function ClaimTypeBadge({ claimType }: { claimType: ClaimType | string }) {
@@ -15,9 +15,9 @@ export function ClaimTypeBadge({ claimType }: { claimType: ClaimType | string })
 }
 
 const VERDICT_META: Record<string, { label: string; className: string }> = {
-  supported: { label: "已支持", className: "bg-green-100 text-green-800" },
-  partially_supported: { label: "部分支持", className: "bg-amber-100 text-amber-800" },
-  unsupported: { label: "未支持", className: "bg-red-100 text-red-800" },
+  supported: { label: "已支持", className: "bg-success/10 text-success" },
+  partially_supported: { label: "部分支持", className: "bg-warning/15 text-warning" },
+  unsupported: { label: "未支持", className: "bg-destructive/10 text-destructive" },
 };
 
 export function VerdictBadge({ verdict }: { verdict: Verdict | string }) {
@@ -28,22 +28,22 @@ export function VerdictBadge({ verdict }: { verdict: Verdict | string }) {
 const DECISION_META: Record<string, { label: string; className: string; detail: string }> = {
   advance: {
     label: "advance · 推进",
-    className: "bg-green-100 text-green-800",
+    className: "bg-success/10 text-success",
     detail: "掌握达标，沉淀资源包并进入下一主题",
   },
   retry: {
     label: "retry · 重教",
-    className: "bg-amber-100 text-amber-800",
+    className: "bg-warning/15 text-warning",
     detail: "针对薄弱点重新教学（错因回流注入生成 Agent）",
   },
   regress: {
     label: "regress · 回退",
-    className: "bg-orange-100 text-orange-800",
+    className: "bg-orange-50 text-orange-700",
     detail: "连续答错，回到前置主题降维重学",
   },
   scaffold: {
     label: "scaffold · 脚手架",
-    className: "bg-violet-100 text-violet-800",
+    className: "bg-violet-50 text-violet-700",
     detail: "先做一道镜像错误理解的过渡选择题",
   },
 };

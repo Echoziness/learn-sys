@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   PolarAngleAxis,
@@ -14,7 +14,9 @@ import {
 
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { PathFlow } from "@/components/report/path-flow";
 import { LevelBadge } from "@/components/shared/badges";
+import { PageHeader } from "@/components/shared/page-header";
 import { ExportedEntryList, PackageBrowser } from "@/components/shared/resource-views";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -22,50 +24,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ExportedEntry, ReportResponse, ResourcePackage } from "@/lib/types";
 
-/** 学习路径：水平步进 + regress 回退标注（视频分镜用） */
+/** 学习路径：有向图（节点=主题，灰边=推进，橙虚线=连错回退）+ 回退明细 */
 function PathChart({ topics, regressions }: { topics: { entry_id: string; title: string; order: number; target: boolean }[]; regressions: { entry_id: string; prereq_id: string | null; reason: string }[] }) {
-  const regressByEntry = useMemo(() => {
-    const m = new Map<string, { prereq_id: string | null; reason: string }>();
-    for (const r of regressions) m.set(r.entry_id, r);
-    return m;
-  }, [regressions]);
-
   return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-1">
-        {topics.map((t, i) => {
-          const reg = regressByEntry.get(t.entry_id);
-          return (
-            <div key={t.entry_id} className="flex items-center gap-1">
-              {i > 0 && <div className="h-px w-4 bg-border" />}
-              <div
-                title={`${t.title}${reg ? `（曾回退 → ${reg.prereq_id ?? "无"}）` : ""}`}
-                className={`rounded-md border px-2 py-1 text-xs ${
-                  reg ? "border-orange-400 bg-orange-50" : t.target ? "border-primary/40 bg-primary/5" : "border-border"
-                }`}
-              >
-                <span className="text-muted-foreground">{i + 1}.</span> {t.title.slice(0, 8)}
-                {reg && <span className="ml-1 text-orange-600">↩</span>}
-                {!t.target && <Badge variant="outline" className="ml-1 text-[9px]">前置</Badge>}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <div className="flex flex-wrap items-center gap-3 text-[10px] text-muted-foreground">
-        <span className="flex items-center gap-1">
-          <span className="inline-block h-2 w-2 rounded-sm border border-primary/40 bg-primary/5" />
-          诊断命中目标
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block h-2 w-2 rounded-sm border border-border" />
-          前置链补入
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block h-2 w-2 rounded-sm border border-orange-400 bg-orange-50" />
-          连错回退
-        </span>
-      </div>
+    <div className="space-y-3">
+      <PathFlow topics={topics} regressions={regressions} />
       {regressions.length > 0 ? (
         <div className="space-y-1 text-xs text-orange-700">
           {regressions.map((r, i) => (
@@ -94,43 +57,60 @@ function visualMastery(mastery: number): number {
 
 const MASTERY_GATE_VISUAL = visualMastery(MASTERY_GATE);
 
+/** 指标卡：赛题目标值达标与否用状态徽章明示，数字大而不喽——排版节奏：标签/大数/口径注释 */
+function MetricTile({ label, value, ok, note }: { label: string; value: string; ok: boolean; note: string }) {
+  return (
+    <div className="rounded-xl border bg-card p-4 shadow-sm transition-shadow duration-200 hover:shadow-md">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-medium text-muted-foreground">{label}</p>
+        <Badge
+          variant="outline"
+          className={cn(
+            "border-transparent text-[10px]",
+            ok ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"
+          )}
+        >
+          {ok ? "达标" : "未达标"}
+        </Badge>
+      </div>
+      <p className="mt-3 text-3xl font-semibold tracking-tight tabular-nums">{value}</p>
+      <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">{note}</p>
+    </div>
+  );
+}
+
 /** 三指标总览：口径与批量评测（evals/run.py）逐组结果完全一致，SSOT 在 evals/metrics.py */
 function MetricsOverview({ r }: { r: ReportResponse }) {
   const m = r.metrics;
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm">赛题三指标（本会话）</CardTitle>
-        <CardDescription className="text-xs">
-          口径与批量评测逐组结果一致（单一事实源在评测指标模块）：幻觉率越低越好，其余两项越高越好。
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-md border p-3">
-            <p className="text-xs text-muted-foreground">无溯源幻觉率</p>
-            <p className="text-2xl font-bold tabular-nums">{(m.hallucination_rate * 100).toFixed(1)}%</p>
-            <p className="text-[11px] text-muted-foreground">
-              最终裁决 unsupported 论断 / 全部交付论断（{m.claims_total} 条），审核回流后的交付质量
-            </p>
-          </div>
-          <div className="rounded-md border p-3">
-            <p className="text-xs text-muted-foreground">画像-资源适配率</p>
-            <p className="text-2xl font-bold tabular-nums">{(m.tier_match.rate * 100).toFixed(1)}%</p>
-            <p className="text-[11px] text-muted-foreground">
-              资源层级落在诊断层级容忍带（上限+1）内 {m.tier_match.matched}/{m.tier_match.total} 包
-            </p>
-          </div>
-          <div className="rounded-md border p-3">
-            <p className="text-xs text-muted-foreground">知识点覆盖率</p>
-            <p className="text-2xl font-bold tabular-nums">{(m.keyword_coverage.rate * 100).toFixed(1)}%</p>
-            <p className="text-[11px] text-muted-foreground">
-              目标条目关键词在讲义中命中 {m.keyword_coverage.hit}/{m.keyword_coverage.total} 个
-            </p>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+    <section>
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-lg font-semibold tracking-tight">赛题三指标（本会话）</h2>
+        <p className="text-xs text-muted-foreground">
+          口径与批量评测逐组结果一致（单一事实源在评测指标模块）：幻觉率目标 &lt;5%，其余两项 ≥85% / ≥90%
+        </p>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <MetricTile
+          label="无溯源幻觉率"
+          value={`${(m.hallucination_rate * 100).toFixed(1)}%`}
+          ok={m.hallucination_rate < 0.05}
+          note={`最终裁决 unsupported 论断 / 全部交付论断（${m.claims_total} 条），审核回流后的交付质量`}
+        />
+        <MetricTile
+          label="画像-资源适配率"
+          value={`${(m.tier_match.rate * 100).toFixed(1)}%`}
+          ok={m.tier_match.rate >= 0.85}
+          note={`资源层级落在诊断层级容忍带（上限+1）内 ${m.tier_match.matched}/${m.tier_match.total} 包`}
+        />
+        <MetricTile
+          label="知识点覆盖率"
+          value={`${(m.keyword_coverage.rate * 100).toFixed(1)}%`}
+          ok={m.keyword_coverage.rate >= 0.9}
+          note={`目标条目关键词在讲义中命中 ${m.keyword_coverage.hit}/${m.keyword_coverage.total} 个`}
+        />
+      </div>
+    </section>
   );
 }
 
@@ -183,16 +163,17 @@ export function ReportView({ sessionId }: { sessionId: string }) {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">学情报告</h1>
-          <p className="text-sm text-muted-foreground">
-            会话 <span className="font-mono">{sessionId.slice(0, 8)}…</span>
-          </p>
-        </div>
-        <LevelBadge level={r.difficulty_level} />
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="学情报告"
+        description={
+          <>
+            会话 <span className="font-mono">{sessionId.slice(0, 8)}…</span> ·
+            多智能体导学全程的学情画像与个性化产出
+          </>
+        }
+        actions={<LevelBadge level={r.difficulty_level} />}
+      />
 
       <MetricsOverview r={r} />
 

@@ -8,9 +8,9 @@ import { api } from "@/lib/api";
 import type { LearnerProfileInput, ProfileBackground } from "@/lib/types";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 
 /** 双画像对照演示（PRD §2）：一键填充两端典型画像 */
@@ -106,110 +106,122 @@ export function ProfileForm() {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <span className="text-muted-foreground">快速填充演示画像：</span>
+    <div className="space-y-6">
+      {/* 次要入口：演示画像一键填充，视觉重量低于表单本体 */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs text-muted-foreground">快速填充演示画像</span>
         {PRESETS.map((p) => (
           <Button key={p.name} variant="outline" size="sm" onClick={() => applyPreset(p.value)}>
             {p.name}
-            <span className="ml-2 text-xs text-muted-foreground">{p.hint}</span>
+            <span className="ml-2 text-xs font-normal text-muted-foreground">{p.hint}</span>
           </Button>
         ))}
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>学习者画像</CardTitle>
-          <CardDescription>诊断 Agent 将据此产出盲区定位（gap_ids）、难度层级与教学摘要</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="learner-id">学习者 ID *</Label>
-              <Input
-                id="learner-id"
-                value={learnerId}
-                onChange={(e) => setLearnerId(e.target.value)}
-                placeholder="如 xiaowang-01"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="style-tags">风格标签（逗号分隔）</Label>
-              <Input
-                id="style-tags"
-                value={styleTags}
-                onChange={(e) => setStyleTags(e.target.value)}
-                placeholder="如 类比教学，场景实例"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="education">教育背景</Label>
-              <Input
-                id="education"
-                value={background.education}
-                onChange={(e) => setBackground({ ...background, education: e.target.value })}
-                placeholder="如 中专 / 本科在读"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="major">专业</Label>
-              <Input
-                id="major"
-                value={background.major}
-                onChange={(e) => setBackground({ ...background, major: e.target.value })}
-                placeholder="如 酒店管理"
-              />
-            </div>
-          </div>
+      {/* 表单主体：不用 Card 包裹，字段直接落在纸感底上（字段自带白底描边即轮廓），
+          页面焦点全部让位给输入本身 */}
+      <div className="space-y-5">
+        <div>
+          <h2 className="text-lg font-semibold tracking-tight">学习者画像</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            诊断 Agent 将据此产出盲区定位（gap_ids）、难度层级与教学摘要
+          </p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="goal">学习目标</Label>
+            <Label htmlFor="learner-id">学习者 ID *</Label>
             <Input
-              id="goal"
-              value={background.goal}
-              onChange={(e) => setBackground({ ...background, goal: e.target.value })}
-              placeholder="如 半年内转行数据分析岗"
+              id="learner-id"
+              value={learnerId}
+              onChange={(e) => setLearnerId(e.target.value)}
+              placeholder="如 xiaowang-01"
+              className="bg-card"
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="experience">相关经验</Label>
-            <Textarea
-              id="experience"
-              value={background.experience}
-              onChange={(e) => setBackground({ ...background, experience: e.target.value })}
-              placeholder="用过的工具、学过的课程、工作中的相关经历"
-              rows={2}
+            <Label htmlFor="style-tags">风格标签（逗号分隔）</Label>
+            <Input
+              id="style-tags"
+              value={styleTags}
+              onChange={(e) => setStyleTags(e.target.value)}
+              placeholder="如 类比教学，场景实例"
+              className="bg-card"
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="mastery">初始掌握度（可选 JSON）</Label>
-            <Textarea
-              id="mastery"
-              value={masteryText}
-              onChange={(e) => setMasteryText(e.target.value)}
-              placeholder='{ "BDA-SQL-001": 0.7 }'
-              rows={3}
-              className="font-mono text-xs"
+            <Label htmlFor="education">教育背景</Label>
+            <Input
+              id="education"
+              value={background.education}
+              onChange={(e) => setBackground({ ...background, education: e.target.value })}
+              placeholder="如 中专 / 本科在读"
+              className="bg-card"
             />
-            <p className="text-xs text-muted-foreground">
-              条目 ID 见知识库切片（BDA-DB / BDA-SQL / BDA-PANDAS / BDA-VIZ 系列）；留空表示全部从零诊断
-            </p>
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="major">专业</Label>
+            <Input
+              id="major"
+              value={background.major}
+              onChange={(e) => setBackground({ ...background, major: e.target.value })}
+              placeholder="如 酒店管理"
+              className="bg-card"
+            />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="goal">学习目标</Label>
+          <Input
+            id="goal"
+            value={background.goal}
+            onChange={(e) => setBackground({ ...background, goal: e.target.value })}
+            placeholder="如 半年内转行数据分析岗"
+            className="bg-card"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="experience">相关经验</Label>
+          <Textarea
+            id="experience"
+            value={background.experience}
+            onChange={(e) => setBackground({ ...background, experience: e.target.value })}
+            placeholder="用过的工具、学过的课程、工作中的相关经历"
+            rows={2}
+            className="bg-card"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="mastery">初始掌握度（可选 JSON）</Label>
+          <Textarea
+            id="mastery"
+            value={masteryText}
+            onChange={(e) => setMasteryText(e.target.value)}
+            placeholder='{ "BDA-SQL-001": 0.7 }'
+            rows={3}
+            className="bg-card font-mono text-xs"
+          />
+          <p className="text-xs text-muted-foreground">
+            条目 ID 见知识库切片（BDA-DB / BDA-SQL / BDA-PANDAS / BDA-VIZ 系列）；留空表示全部从零诊断
+          </p>
+        </div>
 
-          {(formError || createSession.isError) && (
-            <p className="text-sm text-destructive">
-              {formError || `建会话失败：${String(createSession.error?.message ?? "").slice(0, 200)}`}
-            </p>
+        {(formError || createSession.isError) && (
+          <p className="text-sm text-destructive">
+            {formError || `建会话失败：${String(createSession.error?.message ?? "").slice(0, 200)}`}
+          </p>
+        )}
+
+        {/* 提交行：发丝线分隔，主操作是全页唯一重色按钮 */}
+        <Separator />
+        <div className="flex items-center gap-3">
+          <Button size="lg" onClick={submit} disabled={createSession.isPending}>
+            {createSession.isPending ? "诊断中…（LLM 调用约 10-20s）" : "开始会话"}
+          </Button>
+          {createSession.isPending && (
+            <span className="text-sm text-muted-foreground">正在生成学情诊断与课程切片</span>
           )}
-          <div className="flex items-center gap-3">
-            <Button onClick={submit} disabled={createSession.isPending}>
-              {createSession.isPending ? "诊断中…（LLM 调用约 10-20s）" : "开始会话"}
-            </Button>
-            {createSession.isPending && (
-              <span className="text-sm text-muted-foreground">正在生成学情诊断与课程切片</span>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }

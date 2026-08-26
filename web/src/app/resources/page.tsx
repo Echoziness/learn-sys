@@ -13,6 +13,7 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { AggregatedExportEntry, AggregatedPackage } from "@/lib/types";
 import { ExportedEntryList, PackageBrowser } from "@/components/shared/resource-views";
+import { PageHeader } from "@/components/shared/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -92,18 +93,29 @@ export default function ResourcesPage() {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">资源库</h1>
-          <p className="text-sm text-muted-foreground">
-            跨会话聚合的资源包（教学沉淀中间产物）与条目化导出条目（可复用资源包本体）
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => void library.refetch()}>
-          刷新
-        </Button>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="资源库"
+        description="跨会话聚合的资源包（教学沉淀中间产物）与条目化导出条目（可复用资源包本体）"
+        actions={
+          <>
+            {library.data && (
+              <div className="flex items-center gap-3 rounded-lg border bg-card px-3 py-1.5 text-xs shadow-xs">
+                <span className="text-muted-foreground">
+                  资源包 <span className="font-semibold text-foreground tabular-nums">{library.data.packages.length}</span>
+                </span>
+                <span className="h-3 w-px bg-border" aria-hidden />
+                <span className="text-muted-foreground">
+                  导出条目 <span className="font-semibold text-foreground tabular-nums">{library.data.exports.length}</span>
+                </span>
+              </div>
+            )}
+            <Button variant="outline" size="sm" onClick={() => void library.refetch()}>
+              刷新
+            </Button>
+          </>
+        }
+      />
 
       <div className="flex flex-wrap items-center gap-2">
         <Select value={sessionFilter} onValueChange={setSessionFilter}>
@@ -165,9 +177,9 @@ export default function ResourcesPage() {
                 {library.data.packages.length === 0 ? (
                   <p className="p-6 text-center text-sm text-muted-foreground">暂无资源包</p>
                 ) : !packagesExpanded ? (
-                  <div className="space-y-2 p-2">
-                    <p className="text-xs text-muted-foreground">
-                      共 {library.data.packages.length} 个资源包（每个含讲义/分阶题等多形态嵌套视图，展开渲染较重）。
+                  <div className="space-y-2 p-4 text-center">
+                    <p className="text-sm text-muted-foreground">
+                      共 {library.data.packages.length} 个资源包，每个含讲义/分阶题等多形态嵌套视图（展开渲染较重，分块加载）。
                     </p>
                     <Button size="sm" onClick={() => setPackagesExpanded(true)}>
                       展开资源包列表

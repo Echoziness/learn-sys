@@ -1,7 +1,8 @@
 "use client";
 
+import { useCallback, useEffect, useState } from "react";
+
 import { ClaimTypeBadge, VerdictBadge } from "@/components/shared/badges";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type {
@@ -47,6 +48,115 @@ function PipelineProgress({ done, active }: { done: Stage[]; active: Stage | nul
   );
 }
 
+/** 讲义轮播：拟物化卡牌堆叠——当前论断为主卡，底下微露下一张卡边缘作堆叠暗示。
+ * 切换通道：键盘 ←/→ + 点击主卡左右边缘区（无显式箭头按钮）。 */
+function ClaimStack({ delivered }: { delivered: TeachDeliveredPayload }) {
+  const claims = delivered.claims;
+  const total = claims.length;
+  const [idx, setIdx] = useState(0);
+  const [dir, setDir] = useState<"next" | "prev">("next");
+  const safeIdx = Math.min(idx, Math.max(total - 1, 0));
+
+  // 新一轮讲义（重教/换主题）→ 回到第一张
+  useEffect(() => {
+    setIdx(0);
+  }, [delivered]);
+
+  const goto = useCallback(
+    (next: number, direction: "next" | "prev") => {
+      if (next < 0 || next >= total) return;
+      setDir(direction);
+      setIdx(next);
+    },
+    [total],
+  );
+
+  // 键盘通道：焦点在输入控件内时让位（不与右栏作答 textarea 的光标移动冲突）
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      const el = e.target as HTMLElement | null;
+      if (el && el.closest("input, textarea, select, [contenteditable]")) return;
+      if (e.key === "ArrowLeft") goto(safeIdx - 1, "prev");
+      else goto(safeIdx + 1, "next");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [goto, safeIdx]);
+
+  if (total === 0) return null;
+  const claim = claims[safeIdx];
+  const verdict = delivered.verdicts[String(claim.claim_index)];
+
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-2">
+        <h3 className="text-sm font-semibold">本轮讲义</h3>
+        {/* 页码指示弱化：小字号低对比，仅作辅助信息 */}
+        <span className="text-[11px] tabular-nums text-muted-foreground/60">
+          {safeIdx + 1} / {total} · 仅审核通过项
+        </span>
+      </div>
+
+      <div className="relative mt-3 min-h-[260px]">
+        {/* 内层容器高度 = 主卡实际高度（随论断文字浮动）：暗示卡锚定它而非外层，
+            无论主卡多高都稳定微露 ~8px；外层 min-h 只负责预留高度预算稳定布局 */}
+        <div className="relative">
+          {/* 下一张卡的堆叠暗示：下方微露 ~8px 错开边缘，纯视觉线索不可交互；最后一张不显示 */}
+          {safeIdx < total - 1 && (
+            <div aria-hidden className="absolute inset-x-3 top-3 -bottom-2 rounded-xl border bg-card/60 shadow-xs" />
+          )}
+
+          {/* 主卡：key 变化触发横向位移 + 透明度渐变（350ms ease-out） */}
+          <div
+            key={claim.claim_index}
+            className={cn(
+              "relative z-10 flex max-h-[400px] flex-col rounded-xl border bg-card p-5 shadow-sm",
+              dir === "next" ? "animate-in fade-in slide-in-from-right-4" : "animate-in fade-in slide-in-from-left-4",
+            )}
+            style={{ animationDuration: "350ms", animationTimingFunction: "ease-out" }}
+          >
+            <div className="flex flex-wrap items-center gap-1.5">
+              <ClaimTypeBadge claimType={claim.claim_type} />
+              {verdict && <VerdictBadge verdict={verdict} />}
+              <span className="ml-auto font-mono text-[10px] text-muted-foreground">
+                #{claim.claim_index + 1}
+              </span>
+            </div>
+            <p className="mt-3 overflow-y-auto text-[15px] leading-relaxed">{claim.text}</p>
+            <div className="mt-3 flex flex-wrap items-center gap-1">
+              <span className="text-[10px] text-muted-foreground">证据溯源：</span>
+              {claim.evidence_ids.map((id) => (
+                <Badge key={id} variant="outline" className="font-mono text-[10px]">
+                  {id}
+                </Badge>
+              ))}
+            </div>
+
+            {/* 边缘点击区：默认隐形，hover 时浮现渐变高亮提示可点击 */}
+            {safeIdx > 0 && (
+              <button
+                type="button"
+                aria-label="上一条论断"
+                onClick={() => goto(safeIdx - 1, "prev")}
+                className="absolute inset-y-0 left-0 w-16 cursor-pointer rounded-l-xl bg-gradient-to-r from-foreground/6 to-transparent opacity-0 transition-opacity duration-200 hover:opacity-100"
+              />
+            )}
+            {safeIdx < total - 1 && (
+              <button
+                type="button"
+                aria-label="下一条论断"
+                onClick={() => goto(safeIdx + 1, "next")}
+                className="absolute inset-y-0 right-0 w-16 cursor-pointer rounded-r-xl bg-gradient-to-l from-foreground/6 to-transparent opacity-0 transition-opacity duration-200 hover:opacity-100"
+              />
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function TeachPanel({
   events,
   delivered,
@@ -78,16 +188,15 @@ export function TeachPanel({
   }).map((s) => s.key);
 
   return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <CardTitle className="text-base">{entryTitle}</CardTitle>
-            <PipelineProgress done={done} active={active} />
-          </div>
-        </CardHeader>
+    <div className="space-y-6">
+      {/* 主题头：裸内容不包卡片——中栏是阅读区，视觉重量让位给右栏作答焦点 */}
+      <div>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-lg font-semibold tracking-tight">{entryTitle}</h2>
+          <PipelineProgress done={done} active={active} />
+        </div>
         {(retrieve || review || errored) && (
-          <CardContent className="space-y-2 text-xs text-muted-foreground">
+          <div className="mt-3 space-y-2 border-t border-border/70 pt-3 text-xs text-muted-foreground">
             {retrieve && (
               <div>
                 <span className="font-medium text-foreground">检索命中 {retrieve.entries.length} 条：</span>
@@ -110,42 +219,11 @@ export function TeachPanel({
             {errored && (
               <p className="text-destructive">执行出错：{String((errored.payload as { message?: string }).message ?? "")}</p>
             )}
-          </CardContent>
+          </div>
         )}
-      </Card>
+      </div>
 
-      {delivered && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">本轮讲义（{delivered.claims.length} 条论断）</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {delivered.claims.map((claim) => {
-              const verdict = delivered.verdicts[String(claim.claim_index)];
-              return (
-                <div key={claim.claim_index} className="rounded-md border p-3">
-                  <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
-                    <ClaimTypeBadge claimType={claim.claim_type} />
-                    {verdict && <VerdictBadge verdict={verdict} />}
-                    <span className="ml-auto font-mono text-[10px] text-muted-foreground">
-                      #{claim.claim_index + 1}
-                    </span>
-                  </div>
-                  <p className="text-sm leading-relaxed">{claim.text}</p>
-                  <div className="mt-2 flex flex-wrap items-center gap-1">
-                    <span className="text-[10px] text-muted-foreground">证据溯源：</span>
-                    {claim.evidence_ids.map((id) => (
-                      <Badge key={id} variant="outline" className="font-mono text-[10px]">
-                        {id}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </CardContent>
-        </Card>
-      )}
+      {delivered && <ClaimStack delivered={delivered} />}
     </div>
   );
 }

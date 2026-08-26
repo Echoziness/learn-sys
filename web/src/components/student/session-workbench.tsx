@@ -17,12 +17,13 @@ import type {
 } from "@/lib/types";
 
 import { LevelBadge } from "@/components/shared/badges";
+import { PageHeader } from "@/components/shared/page-header";
 import { FollowupPanel } from "@/components/student/followup-panel";
 import { QuestionCard } from "@/components/student/question-card";
 import { TeachPanel } from "@/components/student/teach-panel";
 import { TopicList, type TopicStatus } from "@/components/student/topic-list";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 
 /** 交互阶段：教学 → 出题 → 已判分（等用户继续）→（advance/regress 由驱动器自动推进） */
@@ -204,14 +205,26 @@ export function SessionWorkbench({ sessionId }: { sessionId: string }) {
   }
   if (isFinished && phase !== "finished" && startedRef.current === false) {
     return (
-      <div className="space-y-3">
-        <p className="text-sm text-muted-foreground">该会话已结束。</p>
-        <div className="flex gap-2">
-          <Button onClick={() => router.push(`/sessions/${sessionId}/report`)}>查看报告</Button>
-          <Button variant="outline" onClick={() => router.push(`/sessions/${sessionId}/orchestration`)}>
-            裁判面回放
-          </Button>
-        </div>
+      <div className="mx-auto max-w-xl">
+        <Card className="shadow-md">
+          <CardContent className="flex flex-col items-center px-8 py-12 text-center">
+            <div className="flex size-12 items-center justify-center rounded-full bg-success/10">
+              <svg viewBox="0 0 24 24" className="size-6 text-success" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M20 6 9 17l-5-5" />
+              </svg>
+            </div>
+            <h1 className="mt-4 text-xl font-semibold tracking-tight">导学会话已完成</h1>
+            <p className="mt-1.5 text-sm text-muted-foreground">
+              {session.data.plan?.topics?.length ?? 0} 个主题的教学与检验已全部走完，个性化资源包已沉淀入库。
+            </p>
+            <div className="mt-6 flex gap-2">
+              <Button onClick={() => router.push(`/sessions/${sessionId}/report`)}>查看学情报告</Button>
+              <Button variant="outline" onClick={() => router.push(`/sessions/${sessionId}/orchestration`)}>
+                裁判面回放
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -219,33 +232,47 @@ export function SessionWorkbench({ sessionId }: { sessionId: string }) {
   const detail: SessionDetail = session.data;
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)_360px]">
-      {/* 左：诊断 + 主题列表 */}
+    <div className="space-y-6">
+      <PageHeader
+        title="导学工作台"
+        description={`学习者 ${detail.learner_id} · 会话 ${sessionId.slice(0, 8)}… · 课程切片 ${topics.length} 个主题`}
+        actions={
+          <div className="flex items-center gap-3 rounded-lg border bg-card px-3 py-1.5 text-xs shadow-xs">
+            <span className="text-muted-foreground">主题进度</span>
+            <div className="h-1.5 w-28 overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full bg-foreground transition-all duration-500"
+                style={{ width: `${topics.length > 0 ? ((currentIdx + 1) / topics.length) * 100 : 0}%` }}
+              />
+            </div>
+            <span className="font-semibold tabular-nums">
+              {currentIdx + 1}/{topics.length}
+            </span>
+          </div>
+        }
+      />
+
+      <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)_360px]">
+      {/* 左：诊断 + 主题列表（伴随性上下文，视觉重量最轻：背景微差分区，不上卡片描边） */}
       <aside className="space-y-3">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm">
-              学情诊断 <LevelBadge level={detail.difficulty_level} />
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-xs text-muted-foreground">
-            <p>{detail.profile_summary}</p>
-            {detail.gap_ids.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {detail.gap_ids.map((g) => (
-                  <span key={g} className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px]">
-                    {g}
-                  </span>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">课程切片（{topics.length} 个主题）</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <div className="rounded-xl bg-muted/40 p-4">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold">学情诊断</h2>
+            <LevelBadge level={detail.difficulty_level} />
+          </div>
+          <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{detail.profile_summary}</p>
+          {detail.gap_ids.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {detail.gap_ids.map((g) => (
+                <span key={g} className="rounded bg-card px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground shadow-xs">
+                  {g}
+                </span>
+              ))}
+            </div>
+          )}
+          <Separator className="my-4" />
+          <h2 className="text-sm font-semibold">课程切片（{topics.length} 个主题）</h2>
+          <div className="mt-2">
             <TopicList
               topics={topics}
               statuses={statusMap}
@@ -254,8 +281,8 @@ export function SessionWorkbench({ sessionId }: { sessionId: string }) {
                 /* 教学由决策驱动，列表仅展示 */
               }}
             />
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </aside>
 
       {/* 中：教学 */}
@@ -270,22 +297,19 @@ export function SessionWorkbench({ sessionId }: { sessionId: string }) {
           />
         )}
         {consolidating && question && phase !== "loading" && (
-          <Card>
-            <CardContent className="py-3 text-sm text-muted-foreground">
-              巩固模式：上一题已答对——跳过教学，直接出题确认掌握。
-            </CardContent>
-          </Card>
+          <p className="rounded-lg bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+            巩固模式：上一题已答对——跳过教学，直接出题确认掌握。
+          </p>
         )}
         {phase === "error" && (
-          <Card className="border-destructive">
-            <CardContent className="py-3 text-sm text-destructive">
-              {errorMsg}
-              <Separator className="my-2" />
+          <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-sm text-destructive">
+            {errorMsg}
+            <div className="mt-2">
               <Button size="sm" variant="outline" onClick={() => currentTopic && startTopic(currentTopic.entry_id)}>
                 重试本主题
               </Button>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         )}
       </section>
 
@@ -309,18 +333,15 @@ export function SessionWorkbench({ sessionId }: { sessionId: string }) {
           />
         )}
         {phase === "teaching" && (
-          <Card>
-            <CardContent className="py-3 text-sm text-muted-foreground">
-              教学进行中（检索 → 生成 → 审核，约 10-30s）…
-            </CardContent>
-          </Card>
+          <p className="rounded-lg bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+            教学进行中（检索 → 生成 → 审核，约 10-30s）…
+          </p>
         )}
         {phase === "ending" && (
-          <Card>
-            <CardContent className="py-3 text-sm text-muted-foreground">会话收尾中，正在生成报告…</CardContent>
-          </Card>
+          <p className="rounded-lg bg-muted/50 px-3 py-2 text-sm text-muted-foreground">会话收尾中，正在生成报告…</p>
         )}
       </section>
+      </div>
     </div>
   );
 }

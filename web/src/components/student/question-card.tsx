@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import type { AnswerResponse, QuestionResponse } from "@/lib/types";
 
 const TYPE_LABEL: Record<string, string> = {
@@ -43,7 +44,8 @@ export function QuestionCard({
   };
 
   return (
-    <Card>
+    // 作答卡 = 全页唯一操作焦点：三栏中视觉重量最重（深一号阴影 + 微强化描边）
+    <Card className="border-foreground/15 shadow-md">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between gap-2">
           <CardTitle className="text-base">{TYPE_LABEL[question.question_type] ?? question.question_type}</CardTitle>
@@ -59,14 +61,25 @@ export function QuestionCard({
           <>
             {(question.question_type === "choice" || question.question_type === "scaffold") ? (
               <RadioGroup value={choice} onValueChange={setChoice} className="gap-2">
-                {question.options.map((opt) => (
-                  <div key={opt} className="flex items-center space-x-2 rounded-md border px-3 py-2">
-                    <RadioGroupItem value={opt.slice(0, 1)} id={`opt-${opt}`} />
-                    <Label htmlFor={`opt-${opt}`} className="cursor-pointer font-normal">
-                      {opt}
-                    </Label>
-                  </div>
-                ))}
+                {question.options.map((opt) => {
+                  const selected = choice === opt.slice(0, 1);
+                  return (
+                    <div
+                      key={opt}
+                      className={cn(
+                        "flex items-center space-x-2 rounded-lg border px-3 py-2 transition-all duration-150",
+                        selected
+                          ? "border-foreground/50 bg-muted/60 shadow-xs"
+                          : "hover:border-foreground/25 hover:bg-muted/40"
+                      )}
+                    >
+                      <RadioGroupItem value={opt.slice(0, 1)} id={`opt-${opt}`} />
+                      <Label htmlFor={`opt-${opt}`} className="cursor-pointer font-normal">
+                        {opt}
+                      </Label>
+                    </div>
+                  );
+                })}
               </RadioGroup>
             ) : (
               <div className="space-y-2">
@@ -87,11 +100,11 @@ export function QuestionCard({
         )}
 
         {feedback && (
-          <div className="space-y-3">
+          <div className="animate-in fade-in slide-in-from-bottom-2 space-y-3 duration-300">
             <div className="flex items-center gap-2">
               <Badge
                 variant="secondary"
-                className={feedback.is_correct ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}
+                className={feedback.is_correct ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"}
               >
                 {feedback.is_correct ? "回答正确" : "未通过"}
               </Badge>

@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type { SessionListItem } from "@/lib/types";
 import { LevelBadge } from "@/components/shared/badges";
+import { PageHeader } from "@/components/shared/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -15,9 +16,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 const STATUS_META: Record<string, { label: string; className: string }> = {
-  active: { label: "进行中", className: "bg-blue-100 text-blue-800" },
-  finished: { label: "已完成", className: "bg-green-100 text-green-800" },
-  aborted: { label: "已中止", className: "bg-gray-100 text-gray-600" },
+  active: { label: "进行中", className: "bg-sky-50 text-sky-700" },
+  finished: { label: "已完成", className: "bg-success/10 text-success" },
+  aborted: { label: "已中止", className: "bg-muted text-muted-foreground" },
 };
 
 function ActionLinks({ s, children }: { s: SessionListItem; children?: React.ReactNode }) {
@@ -120,7 +121,7 @@ function SessionTable({ data }: { data: SessionListItem[] }) {
         {data.map((s) => {
           const st = STATUS_META[s.status] ?? { label: s.status, className: "" };
           return (
-            <TableRow key={s.session_id}>
+            <TableRow key={s.session_id} className="transition-colors hover:bg-muted/50 [&>td]:py-3">
               <TableCell className="font-medium">{s.learner_id}</TableCell>
               <TableCell>
                 <LevelBadge level={s.difficulty_level} />
@@ -150,21 +151,57 @@ function SessionTable({ data }: { data: SessionListItem[] }) {
 }
 
 export default function SessionsPage() {
+  const [statusFilter, setStatusFilter] = useState("all");
   const sessions = useQuery({
     queryKey: ["sessions"],
     queryFn: () => api.listSessions(200),
   });
 
+  const all = sessions.data ?? [];
+  const counts = {
+    active: all.filter((s) => s.status === "active").length,
+    finished: all.filter((s) => s.status === "finished").length,
+  };
+  const filtered = statusFilter === "all" ? all : all.filter((s) => s.status === statusFilter);
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">历史会话</h1>
-          <p className="text-sm text-muted-foreground">裁判面回放 / 学情报告入口（无需 LLM key）；删除会话时资源包与导出条目可额外保留</p>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => void sessions.refetch()}>
-          刷新
-        </Button>
+    <div className="space-y-6">
+      <PageHeader
+        title="历史会话"
+        description="裁判面回放 / 学情报告入口（无需 LLM key）；删除会话时资源包与导出条目可额外保留"
+        actions={
+          <>
+            <div className="flex items-center gap-3 rounded-lg border bg-card px-3 py-1.5 text-xs shadow-xs">
+              <span className="text-muted-foreground">
+                共 <span className="font-semibold text-foreground tabular-nums">{all.length}</span> 个会话
+              </span>
+              <span className="h-3 w-px bg-border" aria-hidden />
+              <span className="text-muted-foreground">
+                进行中 <span className="font-semibold text-sky-700 tabular-nums">{counts.active}</span>
+              </span>
+              <span className="text-muted-foreground">
+                已完成 <span className="font-semibold text-success tabular-nums">{counts.finished}</span>
+              </span>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => void sessions.refetch()}>
+              刷新
+            </Button>
+          </>
+        }
+      />
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-32">
+            <SelectValue placeholder="状态筛选" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">全部状态</SelectItem>
+            <SelectItem value="active">进行中</SelectItem>
+            <SelectItem value="finished">已完成</SelectItem>
+            <SelectItem value="aborted">已中止</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       <Card>
@@ -182,12 +219,14 @@ export default function SessionsPage() {
           ) : sessions.data.length === 0 ? (
             <p className="p-8 text-center text-sm text-muted-foreground">
               暂无会话。
-              <Link href="/" className="underline">
+              <Link href="/sessions/new" className="underline">
                 新建一个
               </Link>
             </p>
+          ) : filtered.length === 0 ? (
+            <p className="p-8 text-center text-sm text-muted-foreground">该状态下暂无会话</p>
           ) : (
-            <SessionTable data={sessions.data} />
+            <SessionTable data={filtered} />
           )}
         </CardContent>
       </Card>
