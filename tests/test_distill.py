@@ -171,6 +171,7 @@ async def test_distill_prompt_excludes_evaluation_and_injects_claims():
     assert "单一知识点" in captured["content"]
     assert "严禁第二人称与敬语" in captured["content"]
     assert "硬性约束" in captured["content"]
+    assert "领域语言限定" in captured["content"]  # 术语限定在知识库切片领域内
 
 
 async def test_distill_llm_failure_returns_empty():

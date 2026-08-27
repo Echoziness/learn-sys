@@ -122,7 +122,7 @@ diagnose（LLM 一次，输出 gap_ids）→ plan（确定性切片：ID 投影 
 | question（LLM 节点） | 条目（id/title/content/keywords）+ taught_claims（带 claim_type）+ retry 信号（失败降维）+ difficulty_level + previous_questions（防重考） | 题干 + expected（服务端校验字符出自 content ∪ 题干） |
 | answer_pipeline（服务函数） | 题目、作答、掌握度历史 | AnswerOutcome（判分/评估/决策/遗漏清单，CLI 与 Web 共用） |
 | deliver（纯函数，W1 已上线） | draft + review_history（或 teach_delivered 事件）、教学轮历史、knowledge_type、mastery | 讲义（仅 supported）/ 分阶题归档 / 实操指南 / 进阶挑战 / 难度层级 |
-| distill（LLM，导出期调用，2026-08-27 重审） | 错答记录（题目/作答/遗漏，**评估文本不进上下文**——个性化措辞会被复读）+ 脚手架干扰项 + **讲义锚点**（知识化过滤后论断） | 0-2 条误区知识（每条挂 evidence_ids 指向讲义论断，服务端锚定校验：与所引论断 bigram 重叠 ≥ 阈值 + 无学习者指涉；无素材短路不调 LLM） |
+| distill（LLM，导出期调用，2026-08-27 二次重审） | 错答记录（题目/作答/遗漏，**评估文本不进上下文**——个性化措辞会被复读）+ 脚手架干扰项 + **讲义锚点**（知识化过滤后论断） | 0-2 条误区知识（生成侧硬性约束 A-F：单一知识点/完全通用化/锚定讲义/可归因/宁缺毋滥/**领域语言限定**——术语只取自条目/讲义，禁借学习者行业场景词；校验仅作兜底：evidence_ids 锚定 bigram 重叠 + 无指涉/敬语；无素材短路不调 LLM） |
 
 每个节点只读写表内 key，越界即 code review 驳回。隔离红线：review 禁止任何画像字段（含 `profile_summary`）；generate 只读 `profile_summary` 摘要，禁止 `learner_profile` 原始模型；对话日志永不进生成上下文。
 
