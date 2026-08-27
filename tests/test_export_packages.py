@@ -122,6 +122,24 @@ def test_collect_fail_material(store):
     assert distractors == ["B. SELECT 会修改数据"]
 
 
+def test_collect_fail_material_includes_followup(store):
+    """追问确认题纳入原料：题干进困惑记录（学生主动暴露的困惑点）、干扰项进误解集。"""
+    sid = _seed_session(store)
+    store.save_round(
+        sid, entry_id="BDA-SQL-001", round_no=3,
+        question={"question_id": "q_BDA-SQL-001_r3_followup", "question_type": "choice",
+                  "prompt": "澄清：SELECT 配合 WHERE 时是否仍只读取数据？",
+                  "options": ["A. 是，WHERE 只过滤行不修改数据", "B. 否，WHERE 会删除不匹配的行"],
+                  "expected_label": "A"},
+        expected=[], answer="A",
+        grade={"is_correct": True, "evaluation": "", "missed_requirements": []},
+        decision="followup", mastery_after=0.5,
+    )
+    wrong, distractors = collect_fail_material(store, sid, "BDA-SQL-001")
+    assert any("WHERE" in w["prompt"] and not w["answer"] for w in wrong)
+    assert "B. 否，WHERE 会删除不匹配的行" in distractors
+
+
 def test_export_end_to_end_validates_and_distills(store):
     sid = _seed_session(store)
     session = store.get_session(sid)

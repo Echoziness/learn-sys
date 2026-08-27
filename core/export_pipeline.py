@@ -67,16 +67,21 @@ def claims_total_by_entry(store: SessionStore, session_id: str) -> dict[str, int
 def collect_fail_material(
     store: SessionStore, session_id: str, entry_id: str
 ) -> tuple[list[dict[str, str]], list[str]]:
-    """distill 原料：答错记录（题目/错答/遗漏）+ 脚手架/追问干扰项（镜像错误理解）。
+    """distill 原料（三类困惑信号，对应三种增量来源）：
+    1. 答错记录（题目/错答/遗漏）——认知偏差的直接证据；
+    2. 脚手架干扰项——镜像的典型错误理解；
+    3. 追问确认题题干与干扰项——学生主动暴露的困惑点（源条目表述不清的
+       最强信号，2026-08-27 纳入；干扰项即 LLM 判定的候选误解）。
 
-    评估文本（evaluation）不进原料（2026-08-27）：那是面向当前学生的第二人称
-    个性化措辞，喂给 distill 会被复读到可复用知识里——事实原料只需题目/作答/遗漏。
+    评估文本（evaluation）不进原料：那是面向当前学生的第二人称个性化措辞，
+    喂给 distill 会被复读到可复用知识里——事实原料只需题目/作答/遗漏。
     """
     wrong_records: list[dict[str, str]] = []
     scaffold_distractors: list[str] = []
     for r in store.load_rounds(session_id, entry_id):
         q = r.get("question") or {}
         grade = r.get("grade") or {}
+        qid = q.get("question_id", "")
         if r.get("answer") is not None and not grade.get("is_correct", False):
             wrong_records.append(
                 {
@@ -85,13 +90,16 @@ def collect_fail_material(
                     "missed": "；".join(grade.get("missed_requirements") or []),
                 }
             )
-        # 脚手架与追问确认题同构：干扰项都是误解镜像，同为误区提炼原料
-        if q.get("question_id", "").endswith(("_scaffold", "_followup")):
+        # 脚手架与追问确认题同构：干扰项都是误解镜像，同为误区提炼原料；
+        # 追问的题干额外采集——它是学生主动困惑点的澄清式表述（高价值增量）
+        if qid.endswith("_scaffold") or qid.endswith("_followup"):
+            if qid.endswith("_followup") and q.get("prompt"):
+                wrong_records.append({"prompt": q["prompt"], "answer": "", "missed": ""})
             label = q.get("expected_label", "A")
             for opt in q.get("options", []):
                 if not opt.startswith(f"{label}."):
                     scaffold_distractors.append(opt)
-    return wrong_records[:5], scaffold_distractors[:6]  # 原料截断：误区提炼只需代表样本
+    return wrong_records[:6], scaffold_distractors[:6]  # 原料截断：误区提炼只需代表样本
 
 
 def validate_exported(entries: list[dict[str, Any]]) -> list[str]:
