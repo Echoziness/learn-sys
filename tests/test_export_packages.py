@@ -37,15 +37,21 @@ class _Entry:
 
 
 class FakeProvider:
-    """distill 用 fake：返回固定误区（含一条跑题的，应被校验丢弃）。"""
+    """distill 用 fake：返回固定误区（带讲义锚点；含一条锚不上的，应被校验丢弃）。"""
 
     async def chat_validated(self, messages, schema, model=None, **kwargs):
-        from core.agents.distill import DistillOutput
+        from core.agents.distill import DistillOutput, PitfallItem
 
         return DistillOutput(
             pitfalls=[
-                "常见误区：认为 SELECT 查询会修改表中数据；正确理解是 SELECT 只读取数据。",
-                "量子纠缠是微观粒子的关联现象，与本主题完全无关。",
+                PitfallItem(
+                    text="常见误区：认为 SELECT 查询会修改表中数据；正确理解是 SELECT 只读取数据。",
+                    evidence_ids=[0],  # 锚讲义首条（检索数据/查询/表中 重叠）
+                ),
+                PitfallItem(
+                    text="量子纠缠是微观粒子的关联现象，与本主题完全无关。",
+                    evidence_ids=[0],  # 与讲义零重叠，应被锚定校验丢弃
+                ),
             ]
         )
 
@@ -94,6 +100,13 @@ def _seed_session(store: SessionStore) -> str:
              "evidence_ids": ["BDA-SQL-001"], "claim_type": "core", "round": 1},
             {"text": "使用 DISTINCT 可以去除查询结果中的重复行。",
              "evidence_ids": ["BDA-SQL-001"], "claim_type": "core", "round": 2},
+            # 三类污染论断（2026-08-27 实测泄漏场景回归）：导出必须全部过滤，讲义保留
+            {"text": "你的错误在于认为 SELECT 会修改数据，事实上它只读取。",
+             "evidence_ids": ["BDA-SQL-001"], "claim_type": "extension", "round": 2},
+            {"text": "对于学机械专业的你而言，SELECT 的列名选择就像工程图纸的零件清单。",
+             "evidence_ids": ["BDA-SQL-001"], "claim_type": "core", "round": 3},
+            {"text": "SELECT 语句是从数据库表中检索数据的语句，与 FROM 一起构成查询。",
+             "evidence_ids": ["BDA-SQL-001"], "claim_type": "core", "round": 3},
         ],
         questions=[], practice=None, challenge=None, difficulty_tier="beginner",
     )
@@ -121,12 +134,32 @@ def test_export_end_to_end_validates_and_distills(store):
     # distill 提炼的误区进 content，跑题条被丢弃
     assert "常见误区" in item["content"] and "只读" in item["content"]
     assert "量子纠缠" not in item["content"]
+    # 导出三重过滤：错因扩展/学习者指涉/换皮重复不进可复用条目（讲义本体不受影响）
+    assert "你的错误" not in item["content"]          # extension 剔除
+    assert "机械专业" not in item["content"]          # 画像指涉剔除
+    assert item["content"].count("检索数据") == 1     # 换皮重复去重（首条保留）
     # 同构自检零错误 + SeedEntry 可直接校验（= init_db 可入库）
     assert validate_exported(exported) == []
     SeedEntry.model_validate(item)
     # 序列化形态与 entries.jsonl 行格式一致（单行 JSON）
     line = json.dumps(item, ensure_ascii=False)
     SeedEntry.model_validate_json(line)
+
+
+def test_validate_exported_rejects_personal_reference():
+    """自检 fail-closed：过滤层漏网的学习者指涉在导出自检处硬拦。"""
+    leaked = {
+        "id": "GEN-BDA-SQL-001-p01",
+        "knowledge_type": "concept",
+        "title": "SELECT 基础查询（零基础适配版）",
+        "content": "对于学机械专业的你而言，SELECT 用于检索数据。",
+        "prerequisites": [],
+        "difficulty": 2,
+        "keywords": ["SELECT"],
+        "source": "测试",
+    }
+    errors = validate_exported([leaked])
+    assert any("学习者指涉" in e for e in errors)
 
 
 def test_persist_exported_roundtrip(store):

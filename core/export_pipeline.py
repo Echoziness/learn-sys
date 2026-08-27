@@ -21,7 +21,7 @@ import structlog
 from pydantic import BaseModel, Field
 
 from core.agents.distill import distill_pitfalls
-from core.deliver import package_to_entry
+from core.deliver import _lecture_to_knowledge, has_personal_reference, package_to_entry
 from core.llm import LLMProvider
 from core.plan import KnowledgeEntry
 from core.session import SessionStore
@@ -67,7 +67,11 @@ def claims_total_by_entry(store: SessionStore, session_id: str) -> dict[str, int
 def collect_fail_material(
     store: SessionStore, session_id: str, entry_id: str
 ) -> tuple[list[dict[str, str]], list[str]]:
-    """distill 原料：答错记录（题目/错答/评估/遗漏）+ 脚手架/追问干扰项（镜像错误理解）。"""
+    """distill 原料：答错记录（题目/错答/遗漏）+ 脚手架/追问干扰项（镜像错误理解）。
+
+    评估文本（evaluation）不进原料（2026-08-27）：那是面向当前学生的第二人称
+    个性化措辞，喂给 distill 会被复读到可复用知识里——事实原料只需题目/作答/遗漏。
+    """
     wrong_records: list[dict[str, str]] = []
     scaffold_distractors: list[str] = []
     for r in store.load_rounds(session_id, entry_id):
@@ -78,7 +82,6 @@ def collect_fail_material(
                 {
                     "prompt": q.get("prompt", ""),
                     "answer": r["answer"],
-                    "evaluation": grade.get("evaluation", ""),
                     "missed": "；".join(grade.get("missed_requirements") or []),
                 }
             )
@@ -92,7 +95,11 @@ def collect_fail_material(
 
 
 def validate_exported(entries: list[dict[str, Any]]) -> list[str]:
-    """同构自检：字段/枚举/难度区间校验 + 关键词字符 ⊆ content + id 唯一。"""
+    """同构自检：字段/枚举/难度区间校验 + 关键词字符 ⊆ content + 无学习者指涉 + id 唯一。
+
+    学习者指涉检查是导出防线的最后一环（2026-08-27）：可复用知识必须与具体学习者无关，
+    过滤层（package_to_entry）漏网的画像/会话特定指涉在此 fail-closed。
+    """
     errors: list[str] = []
     seen: set[str] = set()
     for raw in entries:
@@ -108,6 +115,8 @@ def validate_exported(entries: list[dict[str, Any]]) -> list[str]:
         for kw in e.keywords:
             if not set(re.sub(r"\s+", "", kw.lower())) <= chars:
                 errors.append(f"{e.id} 关键词 {kw!r} 字符未全部出现在 content")
+        if has_personal_reference(e.content) or has_personal_reference(e.title):
+            errors.append(f"{e.id} content 含学习者指涉（可复用知识必须与学习者无关）")
     return errors
 
 
@@ -147,11 +156,16 @@ async def collect_export_entries(
             logger.warning("export_skip_unknown_entry", entry_id=pkg["entry_id"])
             continue
         wrong, distractors = collect_fail_material(store, sid, pkg["entry_id"])
+        # 讲义锚点：知识化过滤后的论断作"正确理解"的取材源（序号即 evidence_ids 取值）
+        taught_claims = _lecture_to_knowledge(
+            [c for c in (pkg.get("lecture") or []) if isinstance(c, dict) and c.get("text")]
+        )
         pitfalls = await distill_pitfalls(
             {
                 "entry": {"id": source.id, "title": source.title, "content": source.content},
                 "wrong_records": wrong,
                 "scaffold_distractors": distractors,
+                "taught_claims": taught_claims,
             },
             provider=provider,
             model=model,

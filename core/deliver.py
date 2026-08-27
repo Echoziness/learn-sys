@@ -161,6 +161,57 @@ def build_challenge(
 # 诊断层级的中文标注（导出条目标题用）
 _LEVEL_LABEL = {"beginner": "零基础", "intermediate": "进阶", "advanced": "高级"}
 
+# 学习者指涉标记（导出过滤 + 自检共用）：知识库条目必须与学习者无关，
+# 含这些指涉的论断是面向当前学生的个性化教学（重教轮画像适配/错因纠正），
+# 讲义保留（教学上正确），但不得进可复用知识条目。
+# 不用裸「你」判——全库 2168 条讲义论断中 642 条含教学口吻的「你可以…」，
+# 属正常知识表述，误伤面不可接受；只锁画像/会话特定指涉的强模式。
+PERSONAL_MARKERS = (
+    r"你的错误",
+    r"该(?:学生|学员|学习者)",
+    r"对于[^。；]{0,20}的你",
+    r"对你而言",
+)
+
+# 换皮重复判定的二字组重叠阈值：待收论断的 bigram 与已收内容重叠过半即视为
+# 同一知识换说法（实测：真重复 0.54-0.83，真增量 ≤0.47，0.5 分界干净）。
+EXPORT_DEDUP_OVERLAP = 0.5
+
+
+def _bigrams(text: str) -> set[str]:
+    """二字组集合（去空白小写，与出题/误区校验同粒度）。"""
+    t = re.sub(r"\s+", "", text.lower())
+    return {t[i : i + 2] for i in range(len(t) - 1)}
+
+
+def has_personal_reference(text: str) -> bool:
+    """文本是否含学习者指涉（画像适配/会话特定的第二人称表达）。"""
+    return any(re.search(p, text) for p in PERSONAL_MARKERS)
+
+
+def _lecture_to_knowledge(lecture: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """讲义 → 可复用知识论断（导出专用三重过滤）。
+
+    1. 剔除 extension（错因扩展层：面向该学生错因的定向讲解，不是知识）；
+    2. 剔除学习者指涉论断（重教轮画像适配措辞如「对于化学专业的你而言」）；
+    3. 跨轮换皮去重（bigram 重叠 ≥ 阈值即弃——taught_previously 只防复读不防换说法，
+       实测 16 条论断同一知识讲 3 遍）。讲义本体不受影响：个性化教学是学生面的功能。
+    """
+    kept: list[dict[str, Any]] = []
+    kept_bg: set[str] = set()
+    for c in lecture:
+        if c.get("claim_type") == "extension":
+            continue
+        text = c.get("text", "")
+        if has_personal_reference(text):
+            continue
+        bg = _bigrams(text)
+        if bg and len(bg & kept_bg) / len(bg) >= EXPORT_DEDUP_OVERLAP:
+            continue
+        kept.append(c)
+        kept_bg |= bg
+    return kept
+
 
 def package_to_entry(
     pkg: dict[str, Any],
@@ -173,19 +224,22 @@ def package_to_entry(
 ) -> dict[str, Any] | None:
     """资源包 → 知识库条目（entries.jsonl 同构，SeedEntry 可直接校验入库）。
 
-    - content = 讲义 supported 论断按教学弧顺序拼接（procedure_guide 步骤
-      也经 build_lecture 收入 lecture，天然在内容里）+ 可选"常见误区"段
-      （distill 提炼物，原料本身不进库）；
+    - content = 讲义论断经**导出三重过滤**（剔 extension / 剔学习者指涉 /
+      跨轮换皮去重，见 _lecture_to_knowledge）后拼接 + 可选"常见误区"段
+      （distill 提炼物，原料本身不进库）；讲义本体保留个性化论断（教学功能），
+      只在入库形态收口——可复用知识必须与学习者无关；
     - keywords 过滤到 content 实际命中的（判分/种子校验同语义：字符子集），
       保证导出条目天然通过"关键词字符 ⊆ content"校验；
     - prerequisites / difficulty / knowledge_type 继承源条目（知识依赖不变）；
-    - source 改写为生成溯源链：由哪条权威条目生成、审核通过率。
-    讲义为空返回 None（无知识可复用的包不导出）。
+    - source 改写为生成溯源链：由哪条权威条目生成、审核通过率（分母为全部
+      讲义论断，分子为过滤后实际入库的）。
+    过滤后无知识可复用返回 None。
     """
     lecture = [c for c in (pkg.get("lecture") or []) if isinstance(c, dict) and c.get("text")]
-    if not lecture:
+    kept = _lecture_to_knowledge(lecture)
+    if not kept:
         return None
-    body = "\n\n".join(c["text"] for c in lecture)
+    body = "\n\n".join(c["text"] for c in kept)
     pit_list = [p for p in (pitfalls or []) if p]
     if pit_list:
         # 提炼物可能自带"常见误区："前缀（LLM 照抄模板）——去重后统一加一次
@@ -209,18 +263,21 @@ def package_to_entry(
         "keywords": keywords,
         "source": (
             f"生成自 {source_entry.id}（{getattr(source_entry, 'source', '')}）；"
-            f"审核通过 {len(lecture)}/{claims_total} 论断"
+            f"审核通过 {len(lecture)}/{claims_total} 论断，知识化入库 {len(kept)} 条"
         ),
     }
 
 
 __all__ = [
     "CHALLENGE_MASTERY_GATE",
+    "EXPORT_DEDUP_OVERLAP",
+    "PERSONAL_MARKERS",
     "archive_questions",
     "build_challenge",
     "build_lecture",
     "difficulty_tier_for",
     "extract_practice",
+    "has_personal_reference",
     "is_tier_matched",
     "package_to_entry",
 ]

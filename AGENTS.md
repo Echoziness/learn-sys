@@ -122,7 +122,7 @@ diagnose（LLM 一次，输出 gap_ids）→ plan（确定性切片：ID 投影 
 | question（LLM 节点） | 条目（id/title/content/keywords）+ taught_claims（带 claim_type）+ retry 信号（失败降维）+ difficulty_level + previous_questions（防重考） | 题干 + expected（服务端校验字符出自 content ∪ 题干） |
 | answer_pipeline（服务函数） | 题目、作答、掌握度历史 | AnswerOutcome（判分/评估/决策/遗漏清单，CLI 与 Web 共用） |
 | deliver（纯函数，W1 已上线） | draft + review_history（或 teach_delivered 事件）、教学轮历史、knowledge_type、mastery | 讲义（仅 supported）/ 分阶题归档 / 实操指南 / 进阶挑战 / 难度层级 |
-| distill（LLM，导出期调用，2026-08-23） | 错答记录 + 脚手架干扰项 + 条目（导出脚本收集自 topic_rounds） | 0-2 条误区知识（bigram 同域校验；无素材短路返回空，不调 LLM） |
+| distill（LLM，导出期调用，2026-08-27 重审） | 错答记录（题目/作答/遗漏，**评估文本不进上下文**——个性化措辞会被复读）+ 脚手架干扰项 + **讲义锚点**（知识化过滤后论断） | 0-2 条误区知识（每条挂 evidence_ids 指向讲义论断，服务端锚定校验：与所引论断 bigram 重叠 ≥ 阈值 + 无学习者指涉；无素材短路不调 LLM） |
 
 每个节点只读写表内 key，越界即 code review 驳回。隔离红线：review 禁止任何画像字段（含 `profile_summary`）；generate 只读 `profile_summary` 摘要，禁止 `learner_profile` 原始模型；对话日志永不进生成上下文。
 
@@ -153,7 +153,7 @@ diagnose（LLM 一次，输出 gap_ids）→ plan（确定性切片：ID 投影 
 - 知识条目必带 `knowledge_type`（`memory` 事实/定义/术语 / `concept` 概念与关系 / `procedure` 步骤技能，枚举在 `scripts/init_db.py.KnowledgeType`，DB 列 DEFAULT 'concept'），描述知识本体（影响教学方式/门槛/复习节奏），不绑定题型，core/plan.KnowledgeEntry 同持此字段（默认 concept）；
 - 新增种子条目 content 控制在 50-100 字（代码片段算字符），且每个关键词去空格后的全部字符必须出现在 content 里（判分靠子串，`tests/test_seeds.py` 全量校验）；
 - DB schema 变更禁止删库重建：`scripts/init_db.py` 用幂等迁移（PRAGMA table_info 查列 → 缺则 `ALTER TABLE ADD COLUMN`），保留运行时数据与 rowid 对齐（FTS/vec 外部表依赖）。
-- **产出物可复用（2026-08-23 拍板）**：资源包经 `scripts/export_packages.py` 条目化导出为与知识库**同构**的 entries.jsonl（SeedEntry schema），可被 init_db 原样入库——"系统生产的资源喂回系统"的硬证明。进库的是知识本身：讲义 supported 论断直接拼接 + distill agent 从错题/脚手架原料提炼的误区知识段落；**题目和脚手架本身不进库**（它们是提炼原料不是知识）。keywords 过滤到 content 实际命中字符（天然过种子校验）；id 规范 `GEN-{entry_id}-{learner_id}`；prerequisites/difficulty/knowledge_type 继承源条目；source 改写为生成溯源链（含审核通过率 n/m）。导出自检：schema 校验 + keywords 字符子集 + id 唯一，失败非零退出；**自检通过后双写：文件交付物 + exported_entries 表（`GET /{id}/exports` 数据源，报告页展示条目本体），并发 `packages_exported` 审计事件**（2026-08-26）；
+- **产出物可复用（2026-08-23 拍板）**：资源包经 `scripts/export_packages.py` 条目化导出为与知识库**同构**的 entries.jsonl（SeedEntry schema），可被 init_db 原样入库——"系统生产的资源喂回系统"的硬证明。进库的是知识本身：讲义论断经**导出三重过滤**（剔 extension 错因论断 / 剔学习者指涉措辞如「对于化学专业的你而言」/ 跨轮换皮去重，`deliver._lecture_to_knowledge`，2026-08-27 实测泄漏修复——讲义本体保留个性化论断不受影响）+ distill agent 提炼的误区知识段落（输入端断掉个性化源：评估文本不进上下文；输出端讲义锚定：每条误区挂 evidence_ids 指向讲义论断，"正确理解"必须取材自有据可查的讲义）；**题目和脚手架本身不进库**（它们是提炼原料不是知识）。keywords 过滤到 content 实际命中字符（天然过种子校验）；id 规范 `GEN-{entry_id}-{learner_id}`；prerequisites/difficulty/knowledge_type 继承源条目；source 改写为生成溯源链（含审核通过率 n/m）。导出自检：schema 校验 + keywords 字符子集 + **无学习者指涉**（可复用知识必须与学习者无关，`has_personal_reference` fail-closed）+ id 唯一，失败非零退出；**自检通过后双写：文件交付物 + exported_entries 表（`GET /{id}/exports` 数据源，报告页展示条目本体），并发 `packages_exported` 审计事件**（2026-08-26）；
 - **审核价值数字已在事件流里**（2026-08-23 确认）：打回重写回路天然产生对照组——`review_done` 事件的 review_round=1 裁决 = 无回路时的裸幻觉率口径，teach_delivered 最终裁决 = 有回路的交付质量。收盘时评测脚本聚合两层即可出"审核机制挽救了多少幻觉"的消融对照，**无需做消融开关**；
 
 ### 3.7 会话层（W1 已上线）
