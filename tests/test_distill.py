@@ -75,6 +75,15 @@ def test_validate_rejects_personal_reference():
     assert out == []
 
 
+def test_validate_rejects_honorific_second_person():
+    """第二人称敬语也丢弃（误区的读者是未来学习者，"您"属对话措辞）。"""
+    out = validate_pitfalls(
+        ["常见误区：您认为主键可以重复取值；正确理解是主键唯一标识一行。"],
+        ENTRY,
+    )
+    assert out == []
+
+
 def test_validate_requires_evidence_anchor_with_claims():
     """给了讲义锚点时：正确理解必须锚得上讲义（bigram 重叠），锚不上即丢。"""
     anchored = PitfallItem(
@@ -158,6 +167,10 @@ async def test_distill_prompt_excludes_evaluation_and_injects_claims():
         provider=CaptureProvider(),  # type: ignore[arg-type]
     )
     assert "唯一标识每一行记录" in captured["content"]  # 讲义锚点在上下文里
+    # 生成侧硬性约束进提示词（质量第一责任在 prompt，校验只兜底）
+    assert "单一知识点" in captured["content"]
+    assert "严禁第二人称与敬语" in captured["content"]
+    assert "硬性约束" in captured["content"]
 
 
 async def test_distill_llm_failure_returns_empty():
