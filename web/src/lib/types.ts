@@ -64,22 +64,13 @@ export interface AnswerResponse {
   is_scaffold: boolean;
 }
 
-/** 动态追问判定结果（POST /topics/{entry}/followup）：无效只有理由，有效携带确认题 */
+/** 动态追问判定结果（POST /topics/{entry}/followup）：无效只有理由，有效携带困惑解答 */
 export interface FollowupAskResponse {
   valid: boolean;
   reason: string;
   round_no: number;
-  question_id: string | null;
-  prompt: string | null;
-  options: string[];
-}
-
-/** 追问确认题作答结果（不写掌握度：澄清工具非测评） */
-export interface FollowupAnswerResponse {
-  is_correct: boolean;
-  evaluation: string;
-  correct_label: string;
-  round_no: number;
+  /** 针对疑问的直接解答（已记录，下一轮教学针对性强化） */
+  answer: string;
 }
 
 /** 导出触发结果（POST /api/sessions/{id}/export） */
@@ -239,13 +230,14 @@ export interface TopicStateResponse {
   scaffold_pending: boolean;
   prereq_id: string | null;
   has_answered: boolean;
-  /** 未作答的追问确认题（刷新恢复用；无则 null） */
-  followup_pending: {
-    question_id: string;
-    prompt: string;
-    options: string[];
+  /** 最近一条困惑记录（刷新恢复展示用；无则 null） */
+  followup_last: {
     round_no: number;
+    question: string;
+    answer: string;
   } | null;
+  /** 尚未被教学消化的困惑数（>0 时下一轮强制教学） */
+  pending_followup_count: number;
 }
 
 // ---------- 会话事件（协议 17 类 + packages_exported + error）----------

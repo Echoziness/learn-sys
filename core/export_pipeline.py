@@ -85,7 +85,13 @@ def collect_fail_material(
         q = r.get("question") or {}
         grade = r.get("grade") or {}
         qid = q.get("question_id", "")
-        if r.get("answer") is not None and not grade.get("is_correct", False):
+        # 困惑记录轮（answer 承载的是系统解答非学生作答）不进错题记录，
+        # 其困惑信号由下方 _followup 分支单独采集（避免误当学生错答）
+        if (
+            r.get("answer") is not None
+            and not grade.get("is_correct", False)
+            and not qid.endswith("_followup")
+        ):
             wrong_records.append(
                 {
                     "prompt": q.get("prompt", ""),
@@ -93,8 +99,10 @@ def collect_fail_material(
                     "missed": "；".join(grade.get("missed_requirements") or []),
                 }
             )
-        # 脚手架与追问确认题同构：干扰项都是误解镜像，同为误区提炼原料；
-        # 追问的题干额外采集——它是学生主动困惑点的澄清式表述（高价值增量）
+        # 脚手架与追问同构：干扰项都是误解镜像，同为误区提炼原料；
+        # 追问的题干额外采集——学生主动暴露的困惑点（源条目表述不清的强信号，
+        # 2026-08-27 纳入；新式追问无选项，只贡献题干）。困惑记录的 answer 是系统解答，
+        # 不作为学生作答采集。
         if qid.endswith("_scaffold") or qid.endswith("_followup"):
             if qid.endswith("_followup") and q.get("prompt"):
                 wrong_records.append({"prompt": q["prompt"], "answer": "", "missed": ""})

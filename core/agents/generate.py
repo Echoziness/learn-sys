@@ -38,6 +38,7 @@ GENERATE_PROMPT = """你是大数据分析领域的培训讲师。根据以下�
 上轮审核反馈（如有，请逐条回应：采纳并修正，或说明反驳理由）：{feedback}
 {uncovered_section}
 {retry_section}
+{followup_section}
 {advance_section}
 {dedup_section}
 【本次教学主题条目】（必须围绕它讲，这是本轮唯一要教透的内容）：
@@ -212,6 +213,17 @@ async def _generate_full(
         else ""
     )
 
+    # 困惑回流（2026-08-28）：学生主动提问的困惑是比错因更直接的教学锚点，
+    # 本轮必须针对性讲解（当时已给过简答，此处要讲透）；仍是 core 论断（条目范围内）
+    followup_context = state.get("followup_context", "")
+    followup_section = (
+        "【学生主动提出的疑问】（上次教学后记录、尚未被教学消化的困惑，"
+        "本轮必须针对性讲解到位——每条疑问都要有论断正面回应，不得回避）：\n"
+        + followup_context
+        if followup_context
+        else ""
+    )
+
     advance_hint = state.get("advance_hint", "")
     advance_section = (
         "【教学推进提示】（学生识别层已通过）：\n" + advance_hint
@@ -241,6 +253,7 @@ async def _generate_full(
                     feedback=state.get("last_review_feedback", ""),
                     uncovered_section=uncovered_section,
                     retry_section=retry_section,
+                    followup_section=followup_section,
                     advance_section=advance_section,
                     dedup_section=dedup_section,
                     anchor_entry=anchor_entry_text,

@@ -1,8 +1,8 @@
-"""动态追问机制测试（2026-08-26）：与错题→脚手架同构的澄清管线。
+"""动态追问机制测试（2026-08-28 设计回归）：记录困惑 → 解答 → 下轮注入。
 
-覆盖：有效提问 → 判定+确认题生成 → 事件落流；作答不写掌握度、
-不影响主轮号段与进度推导；无效提问 fail-closed；刷新恢复（pending_followup）；
-重教作废未作答追问轮。
+覆盖：有效提问 → 困惑记录落库 + 直接解答（不即时出题）→ 事件落流；
+困惑注入下一轮教学（错因回流同通道）；教学消化后不再注入；巩固模式下
+困惑优先触发教学；无效提问/LLM 失败 fail-closed；困惑进 distill 原料。
 """
 
 import asyncio
@@ -16,6 +16,7 @@ from core.agents.question import (
     _format_claims,
     _format_current_question,
 )
+from core.export_pipeline import collect_fail_material
 
 
 class FollowupProvider(FakeProvider):
@@ -45,68 +46,101 @@ def _valid_followup() -> FollowupOutput:
     return FollowupOutput(
         is_valid=True,
         reason="与本轮教学论断相关",
-        question="关于甲的作用，下面哪个理解是正确的？",
-        correct="甲是主题一的核心概念，乙是配套",
-        distractors=["甲和乙没有任何关系", "乙才是主题一的核心概念"],
+        answer="甲是主题一的核心概念，乙是配套使用——甲负责定义，乙负责配合甲完成操作。",
     )
 
 
-def test_followup_valid_flow(tmp_path):
-    """有效提问 → 确认题侧车轮 → 作答不写掌握度、主流程不受影响。"""
+def test_followup_valid_records_and_answers(tmp_path):
+    """有效提问 → 困惑记录落库 + 直接解答，不即时出题、不写掌握度。"""
+    loop, store = _setup_followup(tmp_path, [_valid_followup()])
+    ctx = asyncio.run(loop.start_session("u1", _profile()))
+    asyncio.run(loop.teach_round(ctx, "E1"))
+
+    r = asyncio.run(loop.handle_followup(ctx, "E1", "甲到底起什么作用？"))
+    assert r.valid and r.answer is not None and "核心概念" in r.answer
+
+    # 困惑记录：decision=followup，prompt=学生疑问，answer=系统解答
+    rounds = store.load_rounds(ctx.session_id, "E1")
+    fu = [x for x in rounds if x["decision"] == "followup"]
+    assert len(fu) == 1
+    assert fu[0]["question"]["question_type"] == "followup"
+    assert fu[0]["question"]["prompt"] == "甲到底起什么作用？"
+    assert fu[0]["answer"] == r.answer
+
+    # 事件落流：含解答，且不再有即时出题/判分事件
+    events = _events(store, ctx.session_id)
+    assert events["followup_asked"][0]["valid"] is True
+    assert events["followup_asked"][0]["answer"] == r.answer
+    assert "followup_offered" not in events
+    assert "followup_graded" not in events
+
+    # 不写掌握度；主轮号段在困惑记录后顺延（轮号仅编码，无语义影响）
+    assert store.load_mastery_history(ctx.session_id, "E1") == []
+    q1 = asyncio.run(loop.next_question(ctx, "E1"))
+    assert q1.question_id == "q_E1_r3_choice"
+
+    # 刷新恢复：最近困惑记录可读
+    last = loop.last_followup_record(ctx.session_id, "E1")
+    assert last is not None and last["question"] == "甲到底起什么作用？"
+
+
+def test_followup_injected_into_next_teach(tmp_path):
+    """未消化困惑注入下一轮教学（错因回流同通道，followup_context）。"""
+    loop, store = _setup_followup(tmp_path, [_valid_followup()])
+    ctx = asyncio.run(loop.start_session("u1", _profile()))
+    asyncio.run(loop.teach_round(ctx, "E1"))
+    asyncio.run(loop.handle_followup(ctx, "E1", "甲到底起什么作用？"))
+
+    assert len(loop.pending_followups(ctx.session_id, "E1")) == 1
+
+    # 下一轮教学：困惑进 generate 的 state（FakeGraph.states 可查）
+    asyncio.run(loop.teach_round(ctx, "E1"))
+    graph_states = loop._graph.states  # type: ignore[attr-defined]
+    assert "followup_context" in graph_states[-1]
+    assert "甲到底起什么作用？" in graph_states[-1]["followup_context"]
+    assert "当时已给出的解答" in graph_states[-1]["followup_context"]
+
+    # 教学完成后困惑被消化（轮号推导，无状态标记）
+    assert loop.pending_followups(ctx.session_id, "E1") == []
+    # 再教一轮不重复注入
+    asyncio.run(loop.teach_round(ctx, "E1"))
+    assert "followup_context" not in loop._graph.states[-1]  # type: ignore[attr-defined]
+
+
+def test_followup_forces_teaching_over_consolidation(tmp_path):
+    """巩固模式让位困惑：answer 答对未达门槛本可跳过教学，有未消化困惑则必须教。"""
     feedbacks = [
-        FeedbackOutput(verdict="correct", evaluation="选择题对", missed_requirements=[]),
-        FeedbackOutput(verdict="correct", evaluation="追问确认对", missed_requirements=[]),
+        # choice 答错也走 LLM 复核（解释错因）→ 消费一条；最终 answer 复核一条
+        FeedbackOutput(verdict="incorrect", evaluation="choice 错", missed_requirements=[]),
+        FeedbackOutput(verdict="correct", evaluation="回答题对", missed_requirements=[]),
     ]
     loop, store = _setup_followup(tmp_path, [_valid_followup()], feedbacks=feedbacks)
     ctx = asyncio.run(loop.start_session("u1", _profile()))
     asyncio.run(loop.teach_round(ctx, "E1"))
 
-    # 主题目照常（pending 主轮与追问通道互不干扰）
+    # choice 答错→重教→答对（[F,T]→0.588）→重教→answer 答对（[F,T,T]→0.696 未达门槛）→巩固
     q1 = asyncio.run(loop.next_question(ctx, "E1"))
-    assert q1.question_id == "q_E1_r1_choice"
-
-    # 追问判定有效 → 确认题落侧车轮
-    r = asyncio.run(loop.handle_followup(ctx, "E1", "甲到底起什么作用？"))
-    assert r.valid and r.question is not None
-    assert r.question.question_id == "q_E1_r2_followup"  # 侧车占用独立号段
-    assert r.question.expected_label == "A"
-    events = _events(store, ctx.session_id)
-    assert events["followup_asked"][0]["valid"] is True
-    assert "followup_offered" in events
-
-    # 刷新恢复：pending_followup 可读
-    pending = loop.pending_followup(ctx.session_id, "E1")
-    assert pending is not None and pending["round_no"] == 2
-
-    # 主轮判分不受追问轮占号影响（round_no 必须落在 1 而非 2）
-    res = asyncio.run(loop.handle_answer(ctx, "E1", q1, q1.expected_label))
-    assert res.round_no == 1
-
-    # 追问作答：不写掌握度快照，决策语义不进主流程
-    g = asyncio.run(loop.answer_followup(ctx, "E1", "A"))
-    assert g.is_correct and g.round_no == 2
-    assert store.load_mastery_history(ctx.session_id, "E1") == [True]
-    assert "followup_graded" in _events(store, ctx.session_id)
-
-    # 追问轮不进进度推导：needs_teaching 仍由主轮（choice 答对）决定
-    progress = loop.progress(ctx.session_id, "E1")
-    assert progress.needs_teaching is True  # choice 答对仍需教学（应用推进）
-    assert not progress.scaffold_pending
-
-    # 资源化衔接：分阶题归档含已作答追问轮
-    asyncio.run(loop.teach_round(ctx, "E1"))
+    wrong_label = "A" if q1.expected_label != "A" else "B"
+    asyncio.run(loop.handle_answer(ctx, "E1", q1, wrong_label))  # choice 答错 → 重教（规则判，无 feedback）
+    asyncio.run(loop.teach_round(ctx, "E1"))  # retry 重教
     q2 = asyncio.run(loop.next_question(ctx, "E1"))
-    assert q2.question_id == "q_E1_r3_answer"  # 追问占 2 后主轮顺延
-    fb2 = FeedbackOutput(verdict="correct", evaluation="回答题对", missed_requirements=[])
-    loop._provider._feedbacks.append(fb2)  # type: ignore[attr-defined]
-    asyncio.run(loop.handle_answer(ctx, "E1", q2, "甲和乙"))
-    packages = store.load_packages(ctx.session_id)
-    qids = [q["question_id"] for q in packages[0]["questions"]]
-    assert "q_E1_r2_followup" in qids
+    assert q2.question_type == "choice"  # 掌握度 0 仍是识别层
+    asyncio.run(loop.handle_answer(ctx, "E1", q2, q2.expected_label))  # 答对 → [F,T] 0.588 未达标→重教
+    asyncio.run(loop.teach_round(ctx, "E1"))
+    q3 = asyncio.run(loop.next_question(ctx, "E1"))
+    assert q3.question_type == "answer"  # 0.588 ≥ 0.5 → 回忆层
+    asyncio.run(loop.handle_answer(ctx, "E1", q3, "甲、乙"))  # 答对但未达门槛
+
+    progress = loop.progress(ctx.session_id, "E1")
+    assert progress.needs_teaching is False  # 巩固模式：本可跳过教学
+
+    # 困惑记录后，端点判定式（与 routes 同逻辑）翻转为必须教学
+    asyncio.run(loop.handle_followup(ctx, "E1", "乙为什么是配套的？"))
+    assert progress.needs_teaching or bool(loop.pending_followups(ctx.session_id, "E1"))
 
 
 def test_followup_invalid_fail_closed(tmp_path):
-    """无效提问：不生成确认题、不落轮，只留 followup_asked 事件。"""
+    """无效提问：不落困惑记录、无解答，只留 followup_asked 事件（valid=false）。"""
     loop, store = _setup_followup(
         tmp_path,
         [FollowupOutput(is_valid=False, reason="与当前学习内容无关")],
@@ -115,11 +149,11 @@ def test_followup_invalid_fail_closed(tmp_path):
     asyncio.run(loop.teach_round(ctx, "E1"))
 
     r = asyncio.run(loop.handle_followup(ctx, "E1", "今天天气怎么样？"))
-    assert not r.valid and r.question is None and "无关" in r.reason
-    assert loop.pending_followup(ctx.session_id, "E1") is None
+    assert not r.valid and r.answer is None and "无关" in r.reason
+    assert loop.pending_followups(ctx.session_id, "E1") == []
+    assert loop.last_followup_record(ctx.session_id, "E1") is None
     events = _events(store, ctx.session_id)
     assert events["followup_asked"][0]["valid"] is False
-    assert "followup_offered" not in events
 
 
 def test_followup_llm_failure_fail_closed(tmp_path):
@@ -141,30 +175,22 @@ def test_followup_llm_failure_fail_closed(tmp_path):
     assert not r.valid and r.reason
 
 
-def test_followup_replaced_and_invalidated_on_reteach(tmp_path):
-    """新提问替换旧未作答确认题；重教作废未作答追问轮。"""
-    loop, store = _setup_followup(tmp_path, [_valid_followup(), _valid_followup()])
+def test_followup_confusion_enters_distill_material(tmp_path):
+    """困惑记录进 distill 原料：学生疑问被采集，系统解答不被误当学生作答。"""
+    loop, store = _setup_followup(tmp_path, [_valid_followup()])
     ctx = asyncio.run(loop.start_session("u1", _profile()))
     asyncio.run(loop.teach_round(ctx, "E1"))
+    result = asyncio.run(loop.handle_followup(ctx, "E1", "甲到底起什么作用？"))
 
-    asyncio.run(loop.handle_followup(ctx, "E1", "第一个疑问"))
-    r2 = asyncio.run(loop.handle_followup(ctx, "E1", "第二个疑问"))
-    assert r2.valid and r2.question is not None
-    # 只剩一个未作答追问轮（旧的被替换）
-    rows = [
-        x for x in store.load_rounds(ctx.session_id, "E1")
-        if x["decision"] == "followup" and x["answer"] is None
-    ]
-    assert len(rows) == 1
-
-    # 重教作废未作答追问轮（删除后号段从剩余轮重算）
-    asyncio.run(loop.teach_round(ctx, "E1"))
-    assert loop.pending_followup(ctx.session_id, "E1") is None
-    q = asyncio.run(loop.next_question(ctx, "E1"))
-    assert q.question_id == "q_E1_r1_choice"
+    wrong, distractors = collect_fail_material(store, ctx.session_id, "E1")
+    assert any(w["prompt"] == "甲到底起什么作用？" for w in wrong)
+    # 系统解答绝不作为"学生作答"出现在任何原料里
+    assert result.answer is not None
+    assert all(result.answer not in w["answer"] for w in wrong)
+    assert distractors == []  # 新式困惑记录无选项
 
 
-# ── 追问上下文注入（2026-08-26 修复）：current_question + 论断轮次标注 ──────
+# ── 追问上下文注入辅助函数（保留覆盖）──────────────────────────────────
 
 
 def test_format_claims_with_round_no():
@@ -178,7 +204,6 @@ def test_format_claims_with_round_no():
     assert "第 1 轮 · core" in result
     assert "第 3 轮 · extension" in result
     assert "论断A" in result and "论断C" in result
-    # 无 round_no 的论断不带轮次前缀
     assert "第 轮" not in result
     lines = result.strip().split("\n")
     assert not lines[2].startswith("- [第")  # 论断C 无轮次标注
@@ -201,60 +226,9 @@ def test_format_current_question_with_answer():
     assert "判定：错误" in result
 
 
-def test_format_current_question_choice_no_answer():
-    """未作答的选择题：只有题干和选项，无作答段。"""
-    q = {
-        "question_id": "q_E1_r1_choice",
-        "question_type": "choice",
-        "prompt": "关于主键的作用，下列说法正确的是？",
-        "options": ["A. 主键用于唯一标识一行", "B. 主键用于加密", "C. 无关", "D. 无关"],
-    }
-    result = _format_current_question(q)
-    assert "【当前题目】（choice）" in result
-    assert "A. 主键用于唯一标识一行" in result
-    assert "学生作答" not in result
-
-
 def test_format_current_question_empty():
     """空 dict → 空字符串（不渲染）。"""
     assert _format_current_question({}) == ""
-
-
-def test_all_taught_claims_include_round_no(tmp_path):
-    """_all_taught_claims 返回的每条论断带 round_no（来自 teach_delivered 事件）。"""
-    loop, store = _setup(tmp_path)
-    ctx = asyncio.run(loop.start_session("u1", _profile()))
-    asyncio.run(loop.teach_round(ctx, "E1"))  # round 1
-    claims = loop._all_taught_claims(ctx.session_id, "E1")
-    assert len(claims) >= 2
-    for c in claims:
-        assert "round_no" in c
-        assert c["round_no"] == 1
-
-
-def test_current_question_helper(tmp_path):
-    """_current_question 取最近主教学轮的题目 + 作答 + 判定。"""
-    feedbacks = [
-        FeedbackOutput(verdict="correct", evaluation="对", missed_requirements=[]),
-    ]
-    loop, store = _setup(tmp_path, feedbacks=feedbacks)
-    ctx = asyncio.run(loop.start_session("u1", _profile()))
-    sid = ctx.session_id
-    # 无轮次时返回空
-    assert loop._current_question(sid, "E1") == {}
-
-    asyncio.run(loop.teach_round(ctx, "E1"))
-    q1 = asyncio.run(loop.next_question(ctx, "E1"))
-    # 未作答时：有题目无作答
-    cq = loop._current_question(sid, "E1")
-    assert cq["prompt"] == q1.prompt
-    assert "student_answer" not in cq
-
-    asyncio.run(loop.handle_answer(ctx, "E1", q1, q1.expected_label))
-    # 已作答时：含 student_answer + is_correct
-    cq2 = loop._current_question(sid, "E1")
-    assert cq2["student_answer"] == q1.expected_label
-    assert cq2["is_correct"] is True
 
 
 def test_handle_followup_injects_current_question(tmp_path):
@@ -270,7 +244,6 @@ def test_handle_followup_injects_current_question(tmp_path):
     q1 = asyncio.run(loop.next_question(ctx, "E1"))
     asyncio.run(loop.handle_answer(ctx, "E1", q1, q1.expected_label))
 
-    # 追问时当前题目应被注入 prompt
     asyncio.run(loop.handle_followup(ctx, "E1", "这道题的选项B是什么意思？"))
     followup_prompts = [
         p for name, p in zip(provider.calls, provider.prompts, strict=False)
@@ -278,7 +251,5 @@ def test_handle_followup_injects_current_question(tmp_path):
     ]
     assert len(followup_prompts) == 1
     prompt = followup_prompts[0]
-    # 当前题目被渲染
     assert "【当前题目】" in prompt
-    # 论断带轮次标注
     assert "第 1 轮" in prompt

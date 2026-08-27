@@ -329,7 +329,7 @@ export function SessionWorkbench({ sessionId }: { sessionId: string }) {
           <FollowupPanel
             sessionId={sessionId}
             entryId={currentTopic.entry_id}
-            pending={topicState?.followup_pending ?? null}
+            last={topicState?.followup_last ?? null}
           />
         )}
         {phase === "teaching" && (

@@ -87,7 +87,8 @@ def archive_questions(rounds: list[dict[str, Any]]) -> list[dict[str, Any]]:
     archived: list[dict[str, Any]] = []
     for r in rounds:
         q = r.get("question")
-        if not q or r.get("answer") is None:
+        # 困惑记录（question_type=followup）不是题目，不分阶归档（2026-08-28）
+        if not q or r.get("answer") is None or q.get("question_type") == "followup":
             continue
         archived.append(
             {

@@ -343,22 +343,6 @@ class SessionStore:
         finally:
             db.close()
 
-    def delete_pending_followup(self, session_id: str, entry_id: str) -> None:
-        """作废未作答的追问侧车轮（新提问替换旧确认题）。
-
-        只删 decision='followup' 的未作答行，不碰主教学轮的 pending 题目。
-        """
-        db = self._connect()
-        try:
-            db.execute(
-                "DELETE FROM topic_rounds "
-                "WHERE session_id=? AND entry_id=? AND answer_text IS NULL AND decision='followup'",
-                (session_id, entry_id),
-            )
-            db.commit()
-        finally:
-            db.close()
-
     def load_rounds(self, session_id: str, entry_id: str | None = None) -> list[dict[str, Any]]:
         """教学轮历史（seq 即轮次写入序）。进度推导（D2）的数据源。"""
         db = self._connect()

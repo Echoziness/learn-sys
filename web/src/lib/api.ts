@@ -57,11 +57,6 @@ export const api = {
       `/api/sessions/${id}/topics/${entryId}/followup`,
       { entry_id: entryId, question },
     ),
-  answerFollowup: (id: string, entryId: string, answer: string) =>
-    postJson<import("@/lib/types").FollowupAnswerResponse>(
-      `/api/sessions/${id}/topics/${entryId}/followup/answer`,
-      { entry_id: entryId, answer },
-    ),
   triggerExport: (id: string) =>
     postJson<import("@/lib/types").ExportTriggerResponse>(`/api/sessions/${id}/export`, {}),
   exportDownloadUrl: (id: string) => apiUrl(`/api/sessions/${id}/export/download`),

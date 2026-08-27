@@ -328,18 +328,17 @@ async def scaffold_node(
 
 
 FOLLOWUP_PROMPT = """学生在学习过程中主动提出了一个疑问。请先判断它是否是与本主题相关的
-真实学习疑问，如果是，再为这个疑问点设计一道确认型选择题，让学生通过选项确认自己
-真的理解了澄清后的内容（与错题脚手架同构：澄清工具，不是测评）。
+真实学习疑问；如果是，直接给出解答——学生正因困惑才提问，此刻需要的是答案，
+不是再被提问（困惑记录会进入后续教学轮针对性强化，此处只负责解答本身）。
 
 【知识条目】
 {entry}
 
-【教学论断】（澄清与正确选项的内容边界，不得引入之外的新概念；
+【教学论断】（解答的内容边界，不得引入之外的新概念；
   优先以最新一轮的论断回应，早前轮次仅作补充锚点）
 {claims}
 
-{current_question_section}
-【学生的提问】{student_question}
+{current_question_section}【学生的提问】{student_question}
 
 判断标准（is_valid）：
 - true：疑问与本条目概念、教学论断相关，是一个真实的知识性疑问；
@@ -348,38 +347,43 @@ FOLLOWUP_PROMPT = """学生在学习过程中主动提出了一个疑问。请�
 - false：寒暄/闲聊、与本主题完全无关、空泛到无法回应（如"太难了怎么办"）。
   拿不准时判 false（fail-closed）。
 
-is_valid=true 时同时生成三件套：
-1. question：确认型选择题题干——直接针对学生的疑问点提问（15-60 字）。
-2. correct：正确选项——一句完整、自洽的陈述（8-60 字），基于条目与教学论断
-   正面回应学生的疑问，学生读后能确认正确理解。
-3. distractors：2-3 个干扰项，每项为一句完整陈述（8-60 字）：
-   - 围绕该疑问点的常见误解（不得与正确项意思相同，选项间不得互相重复）。
+is_valid=true 时生成 answer：针对疑问点的直接解答（60-200 字）——
+基于条目与教学论断正面回应，把道理讲透（可含一句例子），学生读后能解除困惑。
 
-严格按 JSON 输出：
-{{"is_valid": true, "reason": "判断依据（一句话）",
- "question": "...", "correct": "...", "distractors": ["...", "..."]}}
-is_valid=false 时后三个字段留空字符串/空数组。"""
+严格按 JSON 输出：{{"is_valid": true, "reason": "判断依据（一句话）", "answer": "..."}}
+is_valid=false 时 answer 留空字符串。"""
 
 
 class FollowupOutput(BaseModel):
-    """追问一次调用输出：有效性判定 + 确认题三件套（valid 时填充）。"""
+    """追问一次调用输出：有效性判定 + 困惑解答（valid 时填充）。"""
 
     is_valid: bool = Field(description="是否为与本主题相关的真实学习疑问")
     reason: str = Field(default="", description="判断依据（一句话）")
-    question: str = Field(default="", description="确认型选择题题干")
-    correct: str = Field(default="", description="正确选项（正面回应疑问的完整陈述）")
-    distractors: list[str] = Field(
-        default_factory=list, description="干扰项（该疑问点的常见误解）"
+    answer: str = Field(default="", description="针对疑问点的直接解答（60-200 字）")
+
+
+def _validate_followup_answer(
+    answer: str, entry: dict[str, Any], claims: list[dict[str, Any]] | list[str]
+) -> str | None:
+    """解答的服务端校验：长度 + 同域（与条目/讲义论断的 bigram 重叠 ≥2，防漂移到条目外）。"""
+    text = re.sub(r"\s+", " ", (answer or "").strip())
+    if not (20 <= len(text) <= 400):
+        return None
+    source = entry.get("content", "") + " " + entry.get("title", "") + " " + " ".join(
+        c.get("text", "") if isinstance(c, dict) else str(c) for c in claims
     )
+    if _bigram_overlap(text, source) < 2:
+        return None
+    return text
 
 
 @dataclass(frozen=True)
 class FollowupJudgement:
-    """追问判定结果：无效即终止；有效时携带校验通过的脚手架同构三件套。"""
+    """追问判定结果：无效即终止；有效时携带校验通过的困惑解答。"""
 
     valid: bool
     reason: str
-    scaffold: ScaffoldOutput | None = None
+    answer: str | None = None
 
 
 async def followup_node(
@@ -388,11 +392,13 @@ async def followup_node(
     provider: LLMProvider,
     model: str | None = None,
 ) -> FollowupJudgement:
-    """动态追问判定 + 生成：LLM 一次调用判定疑问有效性，有效则生成确认题三件套。
+    """动态追问判定 + 解答：LLM 一次调用判定疑问有效性，有效则直接给出解答。
 
-    注入上下文：条目 + 教学论断（带轮次标注，最新轮优先）+ 当前题目（可选）。
-    与错题脚手架同构（复用 validate_scaffold 的来源可溯校验）。fail-closed：
-    LLM 异常或三件套校验不过 → 判无效（学生收到判定理由，不进澄清管线）。
+    设计回归（2026-08-28）：学生因困惑而提问，系统先记录困惑并给出解答，
+    而非即时反问一道确认题——困惑记录由编排层注入下一轮教学针对性强化，
+    并作为原料进入误区提炼管线（与错题同管道）。
+    注入上下文：条目 + 教学论断（带轮次标注）+ 当前题目（可选）。
+    fail-closed：LLM 异常或解答校验不过 → 判无效（学生收到判定理由）。
     """
     entry = state.get("entry") or {}
     claims = state.get("taught_claims", [])
@@ -428,16 +434,10 @@ async def followup_node(
         return FollowupJudgement(False, "追问判定失败，请换个问法再试", None)
     if not output.is_valid:
         return FollowupJudgement(False, output.reason.strip() or "与当前学习内容无关", None)
-    scaffold = validate_scaffold(
-        ScaffoldOutput(
-            question=output.question, correct=output.correct, distractors=output.distractors
-        ),
-        entry,
-        claims,
-    )
-    if scaffold is None:
+    answer = _validate_followup_answer(output.answer, entry, claims)
+    if answer is None:
         return FollowupJudgement(False, "追问判定失败，请换个问法再试", None)
-    return FollowupJudgement(True, output.reason.strip(), scaffold)
+    return FollowupJudgement(True, output.reason.strip(), answer)
 
 
 CHOICE_PROMPT = """你是培训讲师，刚给学生讲完一个知识点，现在出一道概念辨析选择题

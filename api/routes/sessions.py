@@ -21,7 +21,6 @@ from api.models import (
     CreateSessionResponse,
     DeleteSessionOut,
     ExportedEntryOut,
-    FollowupAnswerOut,
     FollowupAskOut,
     FollowupRequest,
     PlanTopicOut,
@@ -175,7 +174,7 @@ async def answer(session_id: str, req: AnswerRequest, request: Request):
 async def followup_ask(
     session_id: str, entry_id: str, req: FollowupRequest, request: Request
 ):
-    """动态追问：判定学生提问是否真实有效 → 有效则走脚手架同构管线生成确认题。"""
+    """动态追问：判定学生提问是否真实有效 → 有效则记录困惑并直接给出解答（不即时出题）。"""
     store, loop = _deps(request)
     _session_or_404(store, session_id)
     ctx = loop.rebuild_context(session_id)
@@ -189,33 +188,7 @@ async def followup_ask(
         valid=result.valid,
         reason=result.reason,
         round_no=result.round_no,
-        question_id=result.question.question_id if result.question else None,
-        prompt=result.question.prompt if result.question else None,
-        options=list(result.question.options) if result.question else [],
-    )
-
-
-@router.post(
-    "/{session_id}/topics/{entry_id}/followup/answer", response_model=FollowupAnswerOut
-)
-async def followup_answer(
-    session_id: str, entry_id: str, req: AnswerRequest, request: Request
-):
-    """追问确认题作答：不写掌握度（澄清工具非测评证据）。"""
-    store, loop = _deps(request)
-    _session_or_404(store, session_id)
-    ctx = loop.rebuild_context(session_id)
-    try:
-        result = await loop.answer_followup(ctx, entry_id, req.answer)
-    except KeyError as exc:
-        raise HTTPException(409, str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(502, f"追问判分失败: {str(exc)[:200]}") from exc
-    return FollowupAnswerOut(
-        is_correct=result.is_correct,
-        evaluation=result.evaluation,
-        correct_label=result.correct_label,
-        round_no=result.round_no,
+        answer=result.answer or "",
     )
 
 
@@ -511,25 +484,18 @@ async def topic_state(session_id: str, entry_id: str, request: Request):
     except KeyError:
         prereq_id = None
         title = entry_id
-    # 未作答的追问确认题（刷新恢复：前端据此重绘追问区）
-    pending_followup = loop.pending_followup(session_id, entry_id)
-    followup_question = (
-        {
-            "question_id": pending_followup["question"]["question_id"],
-            "prompt": pending_followup["question"]["prompt"],
-            "options": pending_followup["question"].get("options", []),
-            "round_no": pending_followup["round_no"],
-        }
-        if pending_followup and pending_followup.get("question")
-        else None
-    )
+    # 最近一条困惑记录（刷新恢复：前端据此重绘追问区）+ 未消化困惑数（驱动下轮教学）
+    followup_last = loop.last_followup_record(session_id, entry_id)
+    pending_followups = loop.pending_followups(session_id, entry_id)
     return {
         "entry_id": entry_id,
         "title": title,
-        "needs_teaching": progress.needs_teaching,
+        # 有未消化困惑时强制教学（巩固模式让位——困惑需要针对性讲解）
+        "needs_teaching": progress.needs_teaching or bool(pending_followups),
         "next_round_no": progress.next_round_no,
         "scaffold_pending": progress.scaffold_pending,
         "prereq_id": prereq_id,
         "has_answered": progress.last_round is not None,
-        "followup_pending": followup_question,
+        "followup_last": followup_last,
+        "pending_followup_count": len(pending_followups),
     }

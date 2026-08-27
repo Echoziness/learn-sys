@@ -83,6 +83,7 @@ class AgentState(TypedDict, total=False):
     draft: list[DraftClaim]
     cited_entries: list[RetrievedEntry]
     retry_context: str  # 错因回流：上一轮**答错**的题目+作答+评估（extension 论断触发源）
+    followup_context: str  # 困惑回流：上次教学后学生主动提出的疑问+当时解答（本轮必须针对性讲解）
     advance_hint: str  # 识别通过推进：上一轮 choice 答对（core 论断向应用推进，不触发 extension）
     taught_previously: list[str]  # 重教轮去重：之前各轮已教过的论断文本（禁止复读，重教必须给增量）
 
