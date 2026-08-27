@@ -141,8 +141,8 @@ def test_package_to_entry_basic_and_inherit():
     # keywords 过滤到 content 实际命中的（"查询"/"SQL"? SQL 不在 content 字符里）
     assert "SELECT" in item["keywords"] and "查询" in item["keywords"]
     assert "FROM" in item["keywords"]
-    # 溯源链改写：生成来源 + 审核通过率
-    assert "生成自 BDA-SQL-001" in item["source"] and "2/3" in item["source"]
+    # 溯源链改写：生成来源 + 讲义论断数与入库数（讲义只收 supported，全部审核通过）
+    assert "生成自 BDA-SQL-001" in item["source"] and "讲义论断 2 条" in item["source"]
 
 
 def test_package_to_entry_empty_lecture_returns_none():

@@ -171,6 +171,7 @@ PERSONAL_MARKERS = (
     r"该(?:学生|学员|学习者)",
     r"对于[^。；]{0,20}的你",
     r"对你而言",
+    r"你熟悉的",  # 「以你熟悉的X为例」= 画像背景引入（p42 实测："以你熟悉的SQL单表查询为例"）
     r"您",  # 第二人称敬语属对话措辞；全库 2168 条讲义论断仅 14 条命中，误伤面可忽
 )
 
@@ -232,9 +233,10 @@ def package_to_entry(
     - keywords 过滤到 content 实际命中的（判分/种子校验同语义：字符子集），
       保证导出条目天然通过"关键词字符 ⊆ content"校验；
     - prerequisites / difficulty / knowledge_type 继承源条目（知识依赖不变）；
-    - source 改写为生成溯源链：由哪条权威条目生成、审核通过率（分母为全部
-      讲义论断，分子为过滤后实际入库的）。
-    过滤后无知识可复用返回 None。
+    - source 改写为生成溯源链：由哪条权威条目生成、讲义论断数（讲义只收
+      supported 论断，故全部审核通过）与知识化入库条数。
+    过滤后无知识可复用返回 None。claims_total 参数已弃用（事件口径分母在
+    多轮重教会话失真，讲义只含 supported 也使通过率恒为 100%），保留签名兼容。
     """
     lecture = [c for c in (pkg.get("lecture") or []) if isinstance(c, dict) and c.get("text")]
     kept = _lecture_to_knowledge(lecture)
@@ -264,7 +266,7 @@ def package_to_entry(
         "keywords": keywords,
         "source": (
             f"生成自 {source_entry.id}（{getattr(source_entry, 'source', '')}）；"
-            f"审核通过 {len(lecture)}/{claims_total} 论断，知识化入库 {len(kept)} 条"
+            f"讲义论断 {len(lecture)} 条（均经审核通过），知识化入库 {len(kept)} 条"
         ),
     }
 

@@ -54,13 +54,16 @@ class ExportValidationError(ValueError):
 
 
 def claims_total_by_entry(store: SessionStore, session_id: str) -> dict[str, int]:
-    """每条目全部轮次的论断总数（审核通过率的分母，源自 teach_delivered 事件）。"""
+    """每条目讲义累积论断总数（审核通过率的分母）。
+
+    以资源包讲义为权威口径（2026-08-27 修正）：讲义是跨轮追加合并的，
+    而 teach_delivered 事件只含当轮交付论断——多轮重教会话里两者不等，
+    旧口径会算出"通过 18/10"这类分子>分母的溯源失真。
+    """
     totals: dict[str, int] = {}
-    for ev in store.load_events(session_id, limit=2000):
-        if ev.event_type != "teach_delivered":
-            continue
-        eid = ev.payload.get("entry_id", "")
-        totals[eid] = totals.get(eid, 0) + len(ev.payload.get("claims", []))
+    for pkg in store.load_packages(session_id):
+        lecture = pkg.get("lecture") or []
+        totals[pkg["entry_id"]] = len(lecture)
     return totals
 
 
