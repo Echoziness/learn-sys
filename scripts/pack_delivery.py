@@ -372,7 +372,7 @@ def main() -> None:
         model_zip.parent.mkdir(parents=True, exist_ok=True)
         print("[3/4] 打包模型（精简缓存形态：活跃 revision 实体化，约 2.2G，数分钟）…")
         zip_bge_model(model_zip)
-        model_note = f"已打包（存储模式，精简缓存形态）：{_human_size(model_zip.stat().st_size)}"
+        model_note = "已打包（存储模式）"
     else:
         print("[3/4] 跳过模型打包（--zip-model 可开启）")
 
