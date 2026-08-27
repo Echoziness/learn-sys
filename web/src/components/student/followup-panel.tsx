@@ -104,8 +104,8 @@ export function FollowupPanel({
             {state.kind === "idle" && (
               <>
                 <p className="text-xs text-muted-foreground">
-                  对刚学的内容有疑问？提出来——与当前主题相关的疑问会被记录，
-                  先给你解答，下一轮教学还会针对性强化。
+                  对刚学的内容有疑问？提出来——系统会直接解答，并把困惑记录下来，
+                  下一轮教学针对性强化。
                 </p>
                 <Textarea
                   value={text}
@@ -125,8 +125,8 @@ export function FollowupPanel({
 
             {state.kind === "invalid" && (
               <>
-                <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
-                  <p className="mb-1 font-medium">这个提问未被记录：</p>
+                <div className="rounded-md border border-border/70 bg-muted/40 p-2 text-xs text-muted-foreground">
+                  <p className="mb-1 font-medium text-foreground">系统回应</p>
                   <p>{state.reason}</p>
                 </div>
                 <Button size="sm" variant="outline" className="w-full" onClick={reset}>

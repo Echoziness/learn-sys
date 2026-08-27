@@ -139,6 +139,26 @@ def test_followup_forces_teaching_over_consolidation(tmp_path):
     assert progress.needs_teaching or bool(loop.pending_followups(ctx.session_id, "E1"))
 
 
+def test_followup_bool_cannot_veto_anchored_answer(tmp_path):
+    """is_valid 布尔无否决权：LLM 自相矛盾（理由相关却判 false）时，
+    只要解答锚定校验通过即视为有效（实测故障回归）。"""
+    loop, store = _setup_followup(
+        tmp_path,
+        [
+            FollowupOutput(
+                is_valid=False,
+                reason="学生针对主键和外键的本质区别提出疑问，属于本主题核心概念",
+                answer="甲是主题一的核心概念，乙是配套使用——甲负责定义，乙负责配合甲完成操作。",
+            )
+        ],
+    )
+    ctx = asyncio.run(loop.start_session("u1", _profile()))
+    asyncio.run(loop.teach_round(ctx, "E1"))
+    r = asyncio.run(loop.handle_followup(ctx, "E1", "甲到底起什么作用？"))
+    assert r.valid and r.answer is not None and "核心概念" in r.answer
+    assert len(loop.pending_followups(ctx.session_id, "E1")) == 1
+
+
 def test_followup_invalid_fail_closed(tmp_path):
     """无效提问：不落困惑记录、无解答，只留 followup_asked 事件（valid=false）。"""
     loop, store = _setup_followup(

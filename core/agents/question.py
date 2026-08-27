@@ -327,9 +327,9 @@ async def scaffold_node(
     return validate_scaffold(output, entry, claims)
 
 
-FOLLOWUP_PROMPT = """学生在学习过程中主动提出了一个疑问。请先判断它是否是与本主题相关的
-真实学习疑问；如果是，直接给出解答——学生正因困惑才提问，此刻需要的是答案，
-不是再被提问（困惑记录会进入后续教学轮针对性强化，此处只负责解答本身）。
+FOLLOWUP_PROMPT = """学生在学习过程中主动提出了一个疑问。学生正因困惑才提问，此刻需要的
+是答案——请尽最大努力基于下方材料直接解答（困惑记录会进入后续教学轮针对性强化，
+此处只负责解答本身）。宁可给出有限但正确的解答，也不要拒绝回答知识性疑问。
 
 【知识条目】
 {entry}
@@ -340,18 +340,17 @@ FOLLOWUP_PROMPT = """学生在学习过程中主动提出了一个疑问。请�
 
 {current_question_section}【学生的提问】{student_question}
 
-判断标准（is_valid）：
-- true：疑问与本条目概念、教学论断相关，是一个真实的知识性疑问；
-  或针对【当前题目】的题干/选项/作答提出疑问（学生正在面对这道题，
-  对它的任何疑问都视为有效）；
-- false：寒暄/闲聊、与本主题完全无关、空泛到无法回应（如"太难了怎么办"）。
-  拿不准时判 false（fail-closed）。
+处理规则：
+1. 知识性疑问（与条目概念/教学论断/当前题目相关）→ answer 给出直接解答（60-200 字）：
+   基于条目与教学论断正面回应，把道理讲透（可含一句例子），学生读后能解除困惑；
+2. 仅当提问确属寒暄/闲聊、与本主题完全无关、或空泛到无法回应（如"太难了怎么办"）时，
+   answer 留空字符串，并在 reason 写一句温和的引导语（将直接展示给学生，
+   如引导其回到当前学习内容）；
+3. reason 在任何情况下都是一句可直接展示给学生的话（知识性疑问时写解答要点概述，
+   不要写"判定为无效"之类的系统内部措辞）；
+4. is_valid 只作辅助标注：能给出解答即为 true。
 
-is_valid=true 时生成 answer：针对疑问点的直接解答（60-200 字）——
-基于条目与教学论断正面回应，把道理讲透（可含一句例子），学生读后能解除困惑。
-
-严格按 JSON 输出：{{"is_valid": true, "reason": "判断依据（一句话）", "answer": "..."}}
-is_valid=false 时 answer 留空字符串。"""
+严格按 JSON 输出：{{"is_valid": true, "reason": "...", "answer": "..."}}"""
 
 
 class FollowupOutput(BaseModel):
@@ -392,13 +391,13 @@ async def followup_node(
     provider: LLMProvider,
     model: str | None = None,
 ) -> FollowupJudgement:
-    """动态追问判定 + 解答：LLM 一次调用判定疑问有效性，有效则直接给出解答。
-
-    设计回归（2026-08-28）：学生因困惑而提问，系统先记录困惑并给出解答，
-    而非即时反问一道确认题——困惑记录由编排层注入下一轮教学针对性强化，
-    并作为原料进入误区提炼管线（与错题同管道）。
+    """动态追问解答：LLM 一次调用，**解答的锚定校验决定有效性**（2026-08-28 二次修正）。
+    布尔标志不拥否决权：LLM 会自相矛盾（理由写着相关、is_valid 却判 false），
+    而解答能否锚定条目/讲义是更强的相关性证据——只要产出锚定成功的解答即视为有效；
+    仅当无法给出有效解答（寒暄/完全无关）才不记录困惑，返回温和引导语。
     注入上下文：条目 + 教学论断（带轮次标注）+ 当前题目（可选）。
-    fail-closed：LLM 异常或解答校验不过 → 判无效（学生收到判定理由）。
+    困惑记录由编排层注入下一轮教学针对性强化，并进误区提炼管线（与错题同管道）。
+    LLM 异常 → 返回失败提示（学生收到可读理由，不静默）。
     """
     entry = state.get("entry") or {}
     claims = state.get("taught_claims", [])
@@ -431,13 +430,18 @@ async def followup_node(
             temperature=0.2,
         )
     except Exception:
-        return FollowupJudgement(False, "追问判定失败，请换个问法再试", None)
-    if not output.is_valid:
-        return FollowupJudgement(False, output.reason.strip() or "与当前学习内容无关", None)
+        return FollowupJudgement(False, "服务暂时开小差了，请稍后换个问法再试", None)
+    # 有效性以解答的锚定校验为准，不看 is_valid 布尔（防 LLM 自相矛盾否决有效解答）
     answer = _validate_followup_answer(output.answer, entry, claims)
-    if answer is None:
-        return FollowupJudgement(False, "追问判定失败，请换个问法再试", None)
-    return FollowupJudgement(True, output.reason.strip(), answer)
+    if answer is not None:
+        return FollowupJudgement(True, output.reason.strip(), answer)
+    # 无有效解答：不记录困惑（不污染教学管线），返回温和引导语（不拒绝式冷文案）：
+    # 闲聊/无关场景 LLM 已按提示在 reason 写好引导语；其余情况用默认文案兜底
+    if output.is_valid is False and output.reason.strip():
+        guidance = output.reason.strip()
+    else:
+        guidance = "这个问题暂时没法结合当前内容解答——试试围绕刚学的知识点提问？"
+    return FollowupJudgement(False, guidance, None)
 
 
 CHOICE_PROMPT = """你是培训讲师，刚给学生讲完一个知识点，现在出一道概念辨析选择题
