@@ -69,6 +69,7 @@ SCHEMA = """
         session_id      TEXT PRIMARY KEY,
         learner_id      TEXT NOT NULL,
         profile_json    TEXT NOT NULL,           -- 输入画像完整快照
+        domain          TEXT NOT NULL DEFAULT 'bigdata-analysis',  -- 教学领域（seeds 子目录名）
         gap_ids_json    TEXT,                    -- 诊断收敛的本体条目 ID
         difficulty_level TEXT,                   -- beginner/intermediate/advanced
         profile_summary TEXT,
@@ -212,6 +213,7 @@ def ensure_schema(db: sqlite3.Connection, vec_dim: int) -> None:
     # SCHEMA 注释含 JSON 示例花括号，只能用 replace 不能用 str.format
     db.executescript(SCHEMA.replace("{vec_dim}", str(vec_dim)))
     migrate_knowledge_type(db)
+    migrate_sessions_domain(db)
 
 
 def migrate_knowledge_type(db: sqlite3.Connection) -> None:
@@ -223,6 +225,16 @@ def migrate_knowledge_type(db: sqlite3.Connection) -> None:
         db.execute(
             "ALTER TABLE knowledge_entries ADD COLUMN knowledge_type TEXT "
             "NOT NULL DEFAULT 'concept' CHECK(knowledge_type IN ('memory', 'concept', 'procedure'))"
+        )
+
+
+def migrate_sessions_domain(db: sqlite3.Connection) -> None:
+    """旧库（sessions 无 domain 列）幂等补列：会话级领域选择（2026-08-28）。
+    旧会话行取 DEFAULT 回退默认域，与 get_session 的回退逻辑一致。"""
+    cols = {row[1] for row in db.execute("PRAGMA table_info(sessions)")}
+    if "domain" not in cols:
+        db.execute(
+            "ALTER TABLE sessions ADD COLUMN domain TEXT NOT NULL DEFAULT 'bigdata-analysis'"
         )
 
 

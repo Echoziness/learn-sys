@@ -161,7 +161,7 @@ class FakeProvider:
 
 
 class FakeRetriever:
-    def search_gaps(self, gaps, top_k=5, max_difficulty=None):  # noqa: ANN001
+    def search_gaps(self, gaps, top_k=5, max_difficulty=None, domain=None):  # noqa: ANN001
         from core.retrieval import GapSearchResult
         from core.state import RetrievedEntry
 

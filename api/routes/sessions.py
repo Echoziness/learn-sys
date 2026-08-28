@@ -20,6 +20,7 @@ from api.models import (
     CreateSessionRequest,
     CreateSessionResponse,
     DeleteSessionOut,
+    DomainOut,
     ExportedEntryOut,
     FollowupAskOut,
     FollowupRequest,
@@ -55,8 +56,19 @@ def _session_or_404(store, session_id: str) -> None:
         raise HTTPException(404, "会话不存在")
 
 
+@router.get("/domains", response_model=list[DomainOut])
+async def list_domains(request: Request):
+    """可选教学领域（seeds 子目录）：建会话时自选领域——换目录即换领域的入口。"""
+    by_domain = getattr(request.app.state, "domains", {})
+    return [
+        DomainOut(id=d, entry_count=len(entries))
+        for d, entries in sorted(by_domain.items())
+    ]
+
+
 @router.post("", response_model=CreateSessionResponse)
 async def create_session(req: CreateSessionRequest, request: Request):
+    """建会话：画像 → 诊断 + 切片 → 持久化。domain 选定教学领域（默认大数据分析）。"""
     _, loop = _deps(request)
     profile = LearnerProfile(
         background=req.background.model_dump(),
@@ -64,7 +76,9 @@ async def create_session(req: CreateSessionRequest, request: Request):
         style_tags=req.style_tags,
     )
     try:
-        ctx = await loop.start_session(req.learner_id, profile)
+        ctx = await loop.start_session(req.learner_id, profile, domain=req.domain)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc)) from exc
     except Exception as exc:
         raise HTTPException(502, f"诊断失败: {str(exc)[:200]}") from exc
     return CreateSessionResponse(

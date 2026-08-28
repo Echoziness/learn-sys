@@ -62,15 +62,16 @@ class SessionStore:
         learner_id: str,
         profile: dict[str, Any],
         *,
+        domain: str = "bigdata-analysis",
         session_id: str | None = None,
     ) -> str:
         sid = session_id or uuid.uuid4().hex
         db = self._connect()
         try:
             db.execute(
-                "INSERT INTO sessions(session_id, learner_id, profile_json, status, created_at) "
-                "VALUES (?, ?, ?, 'active', ?)",
-                (sid, learner_id, json.dumps(profile, ensure_ascii=False), _now()),
+                "INSERT INTO sessions(session_id, learner_id, profile_json, domain, status, created_at) "
+                "VALUES (?, ?, ?, ?, 'active', ?)",
+                (sid, learner_id, json.dumps(profile, ensure_ascii=False), domain, _now()),
             )
             db.commit()
         finally:
@@ -119,7 +120,7 @@ class SessionStore:
         try:
             row = db.execute(
                 "SELECT session_id, learner_id, profile_json, gap_ids_json, difficulty_level, "
-                "profile_summary, plan_json, status, created_at, finished_at "
+                "profile_summary, plan_json, status, created_at, finished_at, domain "
                 "FROM sessions WHERE session_id=?",
                 (session_id,),
             ).fetchone()
@@ -138,6 +139,7 @@ class SessionStore:
             "status": row[7],
             "created_at": row[8],
             "finished_at": row[9],
+            "domain": row[10] or "bigdata-analysis",  # 旧会话行无 domain 列值时回退默认域
         }
 
     def list_sessions(self, *, limit: int = 100) -> list[dict[str, Any]]:

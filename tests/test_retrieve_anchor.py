@@ -15,7 +15,7 @@ class FakeRetriever:
         self._entries = entries
         self._uncovered = uncovered or []
 
-    def search_gaps(self, gaps, top_k=5, max_difficulty=None):
+    def search_gaps(self, gaps, top_k=5, max_difficulty=None, domain=None):
         return GapSearchResult(self._entries, self._uncovered)
 
 
@@ -62,3 +62,28 @@ def test_anchor_entry_missing_falls_back_to_retrieval():
     state: AgentState = {"gaps": ["数据预处理概述"], "difficulty_level": "beginner"}
     result = asyncio.run(retrieve_node(state, retriever=FakeRetriever(others), top_k=5))
     assert [e.id for e in result["retrieved_entries"]] == ["T2", "T3"]
+
+
+def test_retrieve_node_passes_domain_to_retriever():
+    """多域库：state 携带的 domain 透传给检索器（同域检索防跨域污染）。"""
+    captured = {}
+
+    class DomainCaptureRetriever:
+        def search_gaps(self, gaps, top_k=5, max_difficulty=None, domain=None):
+            captured["domain"] = domain
+            return GapSearchResult([], [])
+
+    state: AgentState = {
+        "gaps": ["任意"],
+        "difficulty_level": "beginner",
+        "domain": "ml-basics",
+    }
+    asyncio.run(retrieve_node(state, retriever=DomainCaptureRetriever(), top_k=5))
+    assert captured["domain"] == "ml-basics"
+
+    # 单域部署（state 无 domain key）：不过滤，行为不变
+    asyncio.run(
+        retrieve_node({"gaps": ["任意"], "difficulty_level": "beginner"},
+                      retriever=DomainCaptureRetriever(), top_k=5)
+    )
+    assert captured["domain"] is None

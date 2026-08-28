@@ -24,9 +24,17 @@ export interface LearnerProfileInput {
   background: ProfileBackground;
   style_tags: string[];
   mastery: Record<string, number>;
+  /** 教学领域（seeds 子目录名；多域库自选，缺省默认域） */
+  domain?: string;
 }
 
 // ---------- REST 响应 ----------
+
+/** 可选教学领域（GET /api/sessions/domains） */
+export interface Domain {
+  id: string;
+  entry_count: number;
+}
 
 export interface PlanTopic {
   entry_id: string;

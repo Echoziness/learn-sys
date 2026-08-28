@@ -76,6 +76,7 @@ class SessionContext:
     gap_ids: list[str]
     plan: Plan
     entries: list[KnowledgeEntry]
+    domain: str = "bigdata-analysis"  # 教学领域（seeds 子目录；检索过滤与上下文重建依据）
 
     def entry(self, entry_id: str) -> KnowledgeEntry:
         return next(e for e in self.entries if e.id == entry_id)
@@ -263,23 +264,32 @@ class TeachLoop:
         store: SessionStore,
         settings: Settings,
         entries: list[KnowledgeEntry],
+        entries_by_domain: dict[str, list[KnowledgeEntry]] | None = None,
     ):
         self._graph = graph
         self._provider = provider
         self._store = store
         self._settings = settings
+        # 单域列表（默认域/单域部署）与按域索引（多域选择）并存：
+        # 未传 entries_by_domain 时回退单域模式（CLI/评测/测试不变）
         self._entries = entries
+        self._entries_by_domain = entries_by_domain or {"bigdata-analysis": entries}
         self._choice_q_cache: dict[str, ChoiceQuestionOutput | None] = {}  # choice 题按 entry_id 缓存
 
     # ---------- 诊断与切片 ----------
 
-    async def start_session(self, learner_id: str, profile: LearnerProfile) -> SessionContext:
-        sid = self._store.create_session(learner_id, profile.model_dump())
+    async def start_session(
+        self, learner_id: str, profile: LearnerProfile, *, domain: str = "bigdata-analysis"
+    ) -> SessionContext:
+        entries = self._entries_for(domain)
+        sid = self._store.create_session(learner_id, profile.model_dump(), domain=domain)
         await self._store.emit(
-            sid, "session_start", {"learner_id": learner_id, "profile": profile.model_dump()}
+            sid,
+            "session_start",
+            {"learner_id": learner_id, "domain": domain, "profile": profile.model_dump()},
         )
 
-        catalog = [{"id": e.id, "title": e.title} for e in self._entries]
+        catalog = [{"id": e.id, "title": e.title} for e in entries]
         diag = await diagnose_node(
             {"learner_profile": profile, "test_results": []},
             provider=self._provider,
@@ -290,7 +300,7 @@ class TeachLoop:
         difficulty_level: str = diag["difficulty_level"]
         summary: str = diag["profile_summary"]
 
-        plan = build_plan(self._entries, gap_ids or diag["gaps"], max_difficulty=5)
+        plan = build_plan(entries, gap_ids or diag["gaps"], max_difficulty=5)
         self._store.save_diagnosis(
             sid,
             gap_ids=gap_ids,
@@ -332,8 +342,16 @@ class TeachLoop:
             profile_summary=summary,
             gap_ids=gap_ids,
             plan=plan,
-            entries=self._entries,
+            entries=entries,
+            domain=domain,
         )
+
+    def _entries_for(self, domain: str) -> list[KnowledgeEntry]:
+        """按域取条目列表：多域选择模式下域不存在即报错（诊断目录/切片不能静默空集）。"""
+        entries = self._entries_by_domain.get(domain)
+        if not entries:
+            raise KeyError(f"未知教学领域：{domain}")
+        return entries
 
     @staticmethod
     def _plan_dict(plan: Plan) -> dict[str, Any]:
@@ -365,6 +383,7 @@ class TeachLoop:
             "difficulty_level": ctx.difficulty_level,
             "profile_summary": ctx.profile_summary,
             "review_round": 0,
+            "domain": ctx.domain,
         }
         if progress.retry_context:
             state["retry_context"] = progress.retry_context
@@ -1111,7 +1130,8 @@ class TeachLoop:
             profile_summary=session["profile_summary"] or "",
             gap_ids=session["gap_ids"],
             plan=plan,
-            entries=self._entries,
+            entries=self._entries_for(session["domain"]),
+            domain=session["domain"],
         )
 
     # ---------- 序列化辅助 ----------

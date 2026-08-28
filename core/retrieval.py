@@ -76,34 +76,57 @@ class Retriever:
         return db
 
     def keyword_search(
-        self, query: str, limit: int = 10, max_difficulty: int | None = None
+        self,
+        query: str,
+        limit: int = 10,
+        max_difficulty: int | None = None,
+        domain: str | None = None,
     ) -> list[RetrievedEntry]:
         fts_query = sanitize_fts_query(query)
         if not fts_query:
             return []
         with closing(self._connect()) as db:
-            where = "AND k.difficulty <= ?" if max_difficulty is not None else ""
+            # 多域库防跨域污染：domain 限定检索只在同域条目内进行（None = 不过滤，单域库兼容）
+            clauses, params = [], []
+            if max_difficulty is not None:
+                clauses.append("k.difficulty <= ?")
+                params.append(max_difficulty)
+            if domain is not None:
+                clauses.append("k.domain = ?")
+                params.append(domain)
+            where = ("AND " + " AND ".join(clauses)) if clauses else ""
+            params = [fts_query, *params, limit]
             rows = db.execute(
                 f"""SELECT f.entry_id, f.rank, k.title, k.content
                    FROM knowledge_fts f JOIN knowledge_entries k ON k.id = f.entry_id
                    WHERE knowledge_fts MATCH ? {where} ORDER BY f.rank LIMIT ?""",
-                (fts_query, *((max_difficulty,) if max_difficulty is not None else ()), limit),
+                params,
             ).fetchall()
         return [RetrievedEntry(id=r[0], title=r[2], content=r[3], score=-r[1]) for r in rows]
 
     def vec_search(
-        self, query: str, limit: int = 10, max_difficulty: int | None = None
+        self,
+        query: str,
+        limit: int = 10,
+        max_difficulty: int | None = None,
+        domain: str | None = None,
     ) -> list[RetrievedEntry]:
         qvec = self._encoder.encode(query, normalize_embeddings=True)
         with closing(self._connect()) as db:
-            where = "AND k.difficulty <= ?" if max_difficulty is not None else ""
+            clauses, params = [], []
+            if max_difficulty is not None:
+                clauses.append("k.difficulty <= ?")
+                params.append(max_difficulty)
+            if domain is not None:
+                clauses.append("k.domain = ?")
+                params.append(domain)
+            where = ("AND " + " AND ".join(clauses)) if clauses else ""
             rows = db.execute(
                 f"""SELECT k.id, k.title, k.content, vec_distance_cosine(v.embedding, ?) AS dist
                    FROM knowledge_vec v JOIN knowledge_entries k ON k.rowid = v.rowid
                    WHERE 1=1 {where}
                    ORDER BY dist LIMIT ?""",
-                (struct.pack(f"{self._vec_dim}f", *qvec),
-                 *((max_difficulty,) if max_difficulty is not None else ()), limit),
+                (struct.pack(f"{self._vec_dim}f", *qvec), *params, limit),
             ).fetchall()
         return [RetrievedEntry(id=r[0], title=r[1], content=r[2], score=1.0 - r[3]) for r in rows]
 
@@ -126,10 +149,14 @@ class Retriever:
         return fused
 
     def hybrid_search(
-        self, query: str, top_k: int = 5, max_difficulty: int | None = None
+        self,
+        query: str,
+        top_k: int = 5,
+        max_difficulty: int | None = None,
+        domain: str | None = None,
     ) -> list[RetrievedEntry]:
-        kw = self.keyword_search(query, limit=top_k * 2, max_difficulty=max_difficulty)
-        vec = self.vec_search(query, limit=top_k * 2, max_difficulty=max_difficulty)
+        kw = self.keyword_search(query, limit=top_k * 2, max_difficulty=max_difficulty, domain=domain)
+        vec = self.vec_search(query, limit=top_k * 2, max_difficulty=max_difficulty, domain=domain)
         fused = self.reciprocal_rank_fusion(kw, vec)[:top_k]
         logger.info(
             "hybrid_search", query=query, kw_count=len(kw), vec_count=len(vec), result_count=len(fused)
@@ -137,16 +164,20 @@ class Retriever:
         return fused
 
     def search_gaps(
-        self, gaps: list[str], top_k: int = 5, max_difficulty: int | None = None
+        self,
+        gaps: list[str],
+        top_k: int = 5,
+        max_difficulty: int | None = None,
+        domain: str | None = None,
     ) -> GapSearchResult:
-        """按盲区逐条检索并判定覆盖度。max_difficulty 为可选的难度闸门。
-        FTS 无命中且向量最高分低于阈值 → 知识库未覆盖。"""
+        """按盲区逐条检索并判定覆盖度。max_difficulty 为可选的难度闸门；
+        domain 限定同域检索（多域库防跨域污染，None = 不过滤）。"""
         seen: set[str] = set()
         entries: list[RetrievedEntry] = []
         uncovered: list[str] = []
         for gap in gaps:
-            kw = self.keyword_search(gap, limit=top_k * 2, max_difficulty=max_difficulty)
-            vec = self.vec_search(gap, limit=top_k * 2, max_difficulty=max_difficulty)
+            kw = self.keyword_search(gap, limit=top_k * 2, max_difficulty=max_difficulty, domain=domain)
+            vec = self.vec_search(gap, limit=top_k * 2, max_difficulty=max_difficulty, domain=domain)
             best_vec = vec[0].score if vec else 0.0
             if not kw and best_vec < self._coverage_min_score:
                 uncovered.append(gap)

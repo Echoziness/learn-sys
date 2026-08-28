@@ -29,26 +29,33 @@ from core.teach_loop import TeachLoop
 logger = structlog.get_logger()
 
 
-def load_entries(db_path: str, domain: str = "bigdata-analysis") -> list[KnowledgeEntry]:
+def load_entries(db_path: str, domain: str | None = None) -> list[KnowledgeEntry]:
+    """加载知识条目；domain=None 时加载全部域（多域选择模式，按 domain 列分组）。"""
     db = sqlite3.connect(db_path)
     try:
-        rows = db.execute(
-            "SELECT id, title, content, prerequisites, difficulty, keywords, source, knowledge_type "
-            "FROM knowledge_entries WHERE domain=?",
-            (domain,),
-        ).fetchall()
+        if domain is not None:
+            rows = db.execute(
+                "SELECT id, domain, title, content, prerequisites, difficulty, keywords, source, "
+                "knowledge_type FROM knowledge_entries WHERE domain=?",
+                (domain,),
+            ).fetchall()
+        else:
+            rows = db.execute(
+                "SELECT id, domain, title, content, prerequisites, difficulty, keywords, source, "
+                "knowledge_type FROM knowledge_entries"
+            ).fetchall()
     finally:
         db.close()
     return [
         KnowledgeEntry(
             id=r[0],
-            title=r[1],
-            content=r[2],
-            prerequisites=json.loads(r[3] or "[]"),
-            difficulty=r[4],
-            keywords=json.loads(r[5] or "[]"),
-            source=r[6] or "",
-            knowledge_type=r[7] or "concept",
+            title=r[2],
+            content=r[3],
+            prerequisites=json.loads(r[4] or "[]"),
+            difficulty=r[5],
+            keywords=json.loads(r[6] or "[]"),
+            source=r[7] or "",
+            knowledge_type=r[8] or "concept",
         )
         for r in rows
     ]
@@ -75,9 +82,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         rrf_k=settings.rrf_k,
         coverage_min_score=settings.coverage_min_score,
     )
+    # 多域加载：按 domain 列分组——建会话时自选领域（换 seeds 子目录即换领域）
     entries = load_entries(settings.database_path)
     if not entries:
         raise RuntimeError("知识库为空，请先运行 scripts/init_db.py")
+    by_domain: dict[str, list[KnowledgeEntry]] = {}
+    db = sqlite3.connect(settings.database_path)
+    try:
+        domains = [r[0] for r in db.execute("SELECT DISTINCT domain FROM knowledge_entries")]
+    finally:
+        db.close()
+    for d in domains:
+        by_domain[d] = [e for e in load_entries(settings.database_path, d)]
     app.state.store = SessionStore(settings.database_path)
     app.state.provider = provider  # 导出端点直接驱动 distill（不经教学图）
     app.state.settings = settings
@@ -87,9 +103,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         store=app.state.store,
         settings=settings,
         entries=entries,
+        entries_by_domain=by_domain,
     )
     app.state.entries = entries
-    logger.info("api_ready", entries=len(entries))
+    app.state.domains = by_domain
+    logger.info("api_ready", entries=len(entries), domains=list(by_domain))
     yield
 
 

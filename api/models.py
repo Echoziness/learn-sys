@@ -17,6 +17,7 @@ class CreateSessionRequest(BaseModel):
     background: ProfileBackground
     style_tags: list[str] = Field(default_factory=list)
     mastery: dict[str, float] = Field(default_factory=dict)
+    domain: str = Field(default="bigdata-analysis", description="教学领域（seeds 子目录名）")
 
 
 class PlanTopicOut(BaseModel):
@@ -53,6 +54,13 @@ class FollowupAskOut(BaseModel):
     reason: str
     round_no: int
     answer: str = ""
+
+
+class DomainOut(BaseModel):
+    """可选教学领域（seeds 子目录）——建会话时自选。"""
+
+    id: str
+    entry_count: int
 
 
 class SessionEventOut(BaseModel):
@@ -131,6 +139,7 @@ __all__ = [
     "CreateSessionRequest",
     "CreateSessionResponse",
     "DeleteSessionOut",
+    "DomainOut",
     "ExportedEntryOut",
     "FollowupAskOut",
     "FollowupRequest",

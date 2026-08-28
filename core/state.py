@@ -85,6 +85,7 @@ class AgentState(TypedDict, total=False):
     retry_context: str  # 错因回流：上一轮**答错**的题目+作答+评估（extension 论断触发源）
     followup_context: str  # 困惑回流：上次教学后学生主动提出的疑问+当时解答（本轮必须针对性讲解）
     advance_hint: str  # 识别通过推进：上一轮 choice 答对（core 论断向应用推进，不触发 extension）
+    domain: str  # 教学领域（多域库同域检索过滤；单域部署缺省不过滤）
     taught_previously: list[str]  # 重教轮去重：之前各轮已教过的论断文本（禁止复读，重教必须给增量）
 
     # review：裁决日志追加式累积（每轮只 append 新裁决的论断）；feedback 是生成 Agent 下一轮的唯一反馈通道

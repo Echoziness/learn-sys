@@ -37,7 +37,11 @@ class SearchRetriever(Protocol):
     """检索最小接口：测试可用 Fake 注入，避免依赖真实 DB/BGE。"""
 
     def search_gaps(
-        self, gaps: list[str], top_k: int = 5, max_difficulty: int | None = None
+        self,
+        gaps: list[str],
+        top_k: int = 5,
+        max_difficulty: int | None = None,
+        domain: str | None = None,
     ) -> GapSearchResult: ...
 
 
@@ -47,6 +51,8 @@ async def retrieve_node(
     gaps = state.get("gaps", [])
     level = state.get("difficulty_level", "beginner")
     cap = DIFFICULTY_CAP.get(level, 2)
+    # 同域检索（多域库防跨域污染；单域库 domain key 缺省时不过滤，行为不变）
+    domain = state.get("domain")
 
     # 锚定条目：逐主题教学时，当前主题条目必须进入教学上下文，检索只作补充。
     # 否则语义相近的邻域条目会带偏本轮教学（见 AGENTS.md 教学聚焦约束）。
@@ -62,7 +68,9 @@ async def retrieve_node(
             )
         ]
 
-    result = await asyncio.to_thread(retriever.search_gaps, gaps, top_k, max_difficulty=cap)
+    result = await asyncio.to_thread(
+        retriever.search_gaps, gaps, top_k, max_difficulty=cap, domain=domain
+    )
     seen = {e.id for e in anchor_entries}
     merged = [
         *anchor_entries,

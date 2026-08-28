@@ -1,8 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
 import type { LearnerProfileInput, ProfileBackground } from "@/lib/types";
@@ -10,6 +10,13 @@ import type { LearnerProfileInput, ProfileBackground } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -57,8 +64,20 @@ export function ProfileForm() {
   const [masteryText, setMasteryText] = useState("");
   const [formError, setFormError] = useState("");
 
+  // 教学领域（seeds 子目录）：后端 init_db 加载全部域，建会话时自选——
+  // 多域时展示选择器，单域时静默默认（不占表单空间）
+  const domains = useQuery({ queryKey: ["domains"], queryFn: api.listDomains });
+  const [domain, setDomain] = useState<string>("");
+  const domainOptions = domains.data ?? [];
+  useEffect(() => {
+    if (!domain && domainOptions.length > 0) {
+      setDomain(domainOptions[0].id);
+    }
+  }, [domain, domainOptions]);
+
   const createSession = useMutation({
-    mutationFn: (payload: LearnerProfileInput) => api.createSession(payload),
+    mutationFn: (payload: LearnerProfileInput & { domain: string }) =>
+      api.createSession(payload),
     onSuccess: (resp) => router.push(`/sessions/${resp.session_id}`),
   });
 
@@ -102,6 +121,7 @@ export function ProfileForm() {
         .map((s) => s.trim())
         .filter(Boolean),
       mastery,
+      domain: domain || "bigdata-analysis",
     });
   };
 
@@ -138,16 +158,26 @@ export function ProfileForm() {
               className="bg-card"
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="style-tags">风格标签（逗号分隔）</Label>
-            <Input
-              id="style-tags"
-              value={styleTags}
-              onChange={(e) => setStyleTags(e.target.value)}
-              placeholder="如 类比教学，场景实例"
-              className="bg-card"
-            />
-          </div>
+          {domainOptions.length > 1 && (
+            <div className="space-y-2">
+              <Label>教学领域</Label>
+              <Select value={domain} onValueChange={setDomain}>
+                <SelectTrigger className="bg-card">
+                  <SelectValue placeholder="选择领域" />
+                </SelectTrigger>
+                <SelectContent>
+                  {domainOptions.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.id}（{d.entry_count} 条）
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                领域 = 知识库切片目录，切换后诊断/教学/资源全部基于所选领域
+              </p>
+            </div>
+          )}
           <div className="space-y-2">
             <Label htmlFor="education">教育背景</Label>
             <Input
@@ -168,6 +198,16 @@ export function ProfileForm() {
               className="bg-card"
             />
           </div>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="style-tags">风格标签（逗号分隔）</Label>
+          <Input
+            id="style-tags"
+            value={styleTags}
+            onChange={(e) => setStyleTags(e.target.value)}
+            placeholder="如 类比教学，场景实例"
+            className="bg-card"
+          />
         </div>
         <div className="space-y-2">
           <Label htmlFor="goal">学习目标</Label>
