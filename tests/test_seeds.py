@@ -1,8 +1,11 @@
-"""种子数据全量校验（31 条）：schema 约束、前置存在/无环/难度单调、关键词字符在 content 内。
+"""种子数据全量校验：schema 约束、前置存在/无环/难度单调、关键词字符在 content 内。
 
 与判分同口径：grade_answer 判定一个关键词命中 = 该关键词全部字符（去空格、小写）
 都出现在作答中（AGENTS.md §6 的 CJK 坑）。content 长度只做宽松 sanity——
 50-100 字的目标约束针对新增条目（写作规范，见 AGENTS.md §3.6），既有条目内容不在此列。
+
+多域（2026-08-28）：每域独立校验 + 跨域 id 唯一（领域间无前置依赖——
+前置闭包在 plan 内按域计算，跨域引用会被 plan 的 ID 投影天然丢弃）。
 """
 
 import re
@@ -17,9 +20,13 @@ SEED_DIR = Path(__file__).resolve().parents[1] / "data" / "seeds"
 
 
 @pytest.fixture(scope="module")
-def entries() -> list:
-    domains = load_entries(SEED_DIR)
-    return [e for entries in domains.values() for e in entries]
+def domains() -> dict:
+    return load_entries(SEED_DIR)
+
+
+@pytest.fixture(scope="module")
+def entries(domains) -> list:
+    return [e for es in domains.values() for e in es]
 
 
 def _content_chars(text: str) -> set[str]:
@@ -27,9 +34,20 @@ def _content_chars(text: str) -> set[str]:
 
 
 def test_entries_count_and_id_format(entries):
-    assert len(entries) == 31
+    assert len(entries) == 49
     for e in entries:
-        assert re.fullmatch(r"BDA-[A-Z]+-\d{3}", e.id), f"id 格式非法: {e.id}"
+        assert re.fullmatch(r"[A-Z]+-[A-Z]+-\d{3}", e.id), f"id 格式非法: {e.id}"
+
+
+def test_domains_present(domains):
+    """多域并存：每域有种子，id 前缀与域名对应（LNX/BDA），跨域不重号。"""
+    assert set(domains) == {"bigdata-analysis", "linux-ops"}
+    assert len(domains["bigdata-analysis"]) == 31
+    assert len(domains["linux-ops"]) == 18
+    for e in domains["linux-ops"]:
+        assert e.id.startswith("LNX-")
+    for e in domains["bigdata-analysis"]:
+        assert e.id.startswith("BDA-")
 
 
 def test_knowledge_type_valid_and_covered(entries):
@@ -99,7 +117,7 @@ def test_topo_sort_covers_all_entries(entries):
         for e in entries
     }
     ordered = topo_sort(by_id, set(by_id))
-    assert len(ordered) == 31
+    assert len(ordered) == 49
 
 
 def test_content_length_sanity(entries):
