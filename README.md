@@ -15,7 +15,9 @@ Web 三画面（学生面 / 裁判面 / 报告）+ 回放              ███
 交付（部署说明 / 视频 / 提交包）                       ░░░░░░░░░░░ 收盘（本地部署，已放弃 Docker）
 ```
 
-测试基线：pytest 213 通过 · pyright 0 errors · ruff 全绿 · web typecheck/lint/build 全绿。
+测试基线：pytest 221 通过 · pyright 0 errors · ruff 全绿 · web typecheck/lint/build 全绿。
+
+知识库：双领域并存——大数据工程（bigdata-analysis，31 条）+ Linux 运维（linux-ops，18 条）；建会话时自选领域（换 seeds 子目录即换领域，零代码）。
 
 评测状态：全量 50 组画像批跑归档（`evals/results/`）——幻觉率 0.44%（目标 <5%）/ 画像-资源适配率 99.0%（目标 ≥85%）/ 知识点覆盖率 97.2%（目标 ≥90%），口径 SSOT 在 `evals/metrics.py`。审核消融对照（`evals/ablation.py`）：无打回回路时裸幻觉率 8.86%，回路压至 0.44%，净挽救 343 条幻觉论断。
 
