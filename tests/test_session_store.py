@@ -113,6 +113,27 @@ def test_round_and_mastery_history(tmp_path):
     assert store.load_mastery_history(sid, "E1") == [False, True]
 
 
+def test_try_claim_round_blocks_concurrent_double_submit(tmp_path):
+    """原子占用：并发双提交只有第一个成功（2026-08-29 实测 409 故障回归）。"""
+    store = make_store(tmp_path)
+    sid = store.create_session("u1", {})
+    store.save_round(
+        sid, entry_id="E1", round_no=1,
+        question={"question_id": "q_E1_r1_answer", "question_type": "answer", "prompt": "？"},
+        expected=["甲"], answer=None, grade=None, decision="pending", mastery_after=None,
+    )
+    assert store.try_claim_round(sid, "E1", 1) is True
+    # 第二个请求穿入：占用失败（终判落地前可重试作答，落地后同样失败）
+    assert store.try_claim_round(sid, "E1", 1) is False
+    store.update_round_answer(
+        sid, "E1", 1, answer="甲", grade={"is_correct": True},
+        decision="advance", mastery_after=0.5,
+    )
+    assert store.try_claim_round(sid, "E1", 1) is False
+    # 不存在的轮：占用失败（无待答题目）
+    assert store.try_claim_round(sid, "E1", 99) is False
+
+
 def test_package_merge_and_dedupe(tmp_path):
     store = make_store(tmp_path)
     sid = store.create_session("test1", {})

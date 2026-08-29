@@ -918,15 +918,9 @@ class TeachLoop:
     async def handle_answer(
         self, ctx: SessionContext, entry_id: str, question: Question, answer: str
     ) -> RoundResult:
-        correctness = self._store.load_mastery_history(ctx.session_id, entry_id)
-        outcome = await process_answer(
-            self._provider,
-            question,
-            answer,
-            correctness,
-            model=self._settings.feedback_model,
-        )
-        is_scaffold = question.question_id.endswith("_scaffold")
+        # 轮号前置计算 + 原子占用（2026-08-29）：判分含数秒级 LLM 调用，
+        # 不占位会让并发双提交穿入同轮（重复判分/双写快照/双发决策事件；
+        # 后到者拿到 409）——占用失败即无待答题目。
         rounds = self._store.load_rounds(ctx.session_id, entry_id)
         # 主轮过滤：追问侧车轮占用号段，不过滤会让 update_round_answer 错位到追问行
         round_no = max(
@@ -937,6 +931,22 @@ class TeachLoop:
             ),
             default=1,
         )
+        if not self._store.try_claim_round(ctx.session_id, entry_id, round_no):
+            raise KeyError("当前无待答题目，请先出题")
+        correctness = self._store.load_mastery_history(ctx.session_id, entry_id)
+        try:
+            outcome = await process_answer(
+                self._provider,
+                question,
+                answer,
+                correctness,
+                model=self._settings.feedback_model,
+            )
+        except Exception:
+            # 判分失败释放占用，轮回置 pending——学生可重试，不卡死在 grading 态
+            self._store.release_round_claim(ctx.session_id, entry_id, round_no)
+            raise
+        is_scaffold = question.question_id.endswith("_scaffold")
 
         # 脚手架答对不计入掌握度历史 → 决策也必须从"计数历史"推导
         # （防脚手架洗白连续错降维计数、防虚高 mastery 触发 advance）

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
@@ -68,7 +68,7 @@ export function ProfileForm() {
   // 多域时展示选择器，单域时静默默认（不占表单空间）
   const domains = useQuery({ queryKey: ["domains"], queryFn: api.listDomains });
   const [domain, setDomain] = useState<string>("");
-  const domainOptions = domains.data ?? [];
+  const domainOptions = useMemo(() => domains.data ?? [], [domains.data]);
   useEffect(() => {
     if (!domain && domainOptions.length > 0) {
       setDomain(domainOptions[0].id);

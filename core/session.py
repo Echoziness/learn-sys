@@ -298,6 +298,39 @@ class SessionStore:
             "created_at": row[9],
         }
 
+    def try_claim_round(self, session_id: str, entry_id: str, round_no: int) -> bool:
+        """pending 轮原子占用：并发重复作答只有一个成功（2026-08-29 双提交故障）。
+        判分（含 LLM 调用，数秒级）开始前占位，防第二个请求穿入同轮——
+        否则同轮会被重复判分、重复写掌握度快照与决策事件。
+        只占 decision='pending' 的未作答轮（占用后置 'grading'，第二个请求因状态已变而失败）；
+        answer_text IS NULL 仍是未作答标志，判分失败后该轮可重试作答。"""
+        db = self._connect()
+        try:
+            cur = db.execute(
+                "UPDATE topic_rounds SET decision='grading' "
+                "WHERE session_id=? AND entry_id=? AND round_no=? "
+                "AND answer_text IS NULL AND decision='pending'",
+                (session_id, entry_id, round_no),
+            )
+            db.commit()
+            return cur.rowcount > 0
+        finally:
+            db.close()
+
+    def release_round_claim(self, session_id: str, entry_id: str, round_no: int) -> None:
+        """判分失败时释放占用（decision 回置 pending）——学生可重试作答，不卡死。"""
+        db = self._connect()
+        try:
+            db.execute(
+                "UPDATE topic_rounds SET decision='pending' "
+                "WHERE session_id=? AND entry_id=? AND round_no=? "
+                "AND answer_text IS NULL AND decision='grading'",
+                (session_id, entry_id, round_no),
+            )
+            db.commit()
+        finally:
+            db.close()
+
     def update_round_answer(
         self,
         session_id: str,

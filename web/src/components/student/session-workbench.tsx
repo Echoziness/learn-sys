@@ -127,10 +127,15 @@ export function SessionWorkbench({ sessionId }: { sessionId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.data]);
 
-  /** 作答提交 → 反馈 → 决策驱动 */
+  /** 作答提交 → 反馈 → 决策驱动。提交锁防重复提交：判分要 5-15s，
+   * 飞行期内再点会并发双提交——第二次 409，并发时同轮还会被重复判分/写快照（2026-08-29 实测） */
+  const submittingRef = useRef(false);
+  const [submitting, setSubmitting] = useState(false);
   const submitAnswer = useCallback(
     async (answer: string) => {
-      if (!currentTopic) return;
+      if (!currentTopic || submittingRef.current) return;
+      submittingRef.current = true;
+      setSubmitting(true);
       try {
         const result = await api.answer(sessionId, currentTopic.entry_id, answer);
         setFeedback(result);
@@ -148,6 +153,9 @@ export function SessionWorkbench({ sessionId }: { sessionId: string }) {
       } catch (err) {
         setErrorMsg(`判分失败：${String((err as Error).message ?? err).slice(0, 200)}`);
         setPhase("error");
+      } finally {
+        submittingRef.current = false;
+        setSubmitting(false);
       }
     },
     [currentTopic, sessionId],
@@ -319,7 +327,7 @@ export function SessionWorkbench({ sessionId }: { sessionId: string }) {
           <QuestionCard
             question={question}
             feedback={feedback}
-            submitting={false}
+            submitting={submitting}
             onSubmit={submitAnswer}
             onNext={proceed}
             nextLabel={nextLabel}
