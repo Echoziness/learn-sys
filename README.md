@@ -15,7 +15,7 @@ Web 三画面（学生面 / 裁判面 / 报告）+ 回放              ███
 交付（部署说明 / 视频 / 提交包）                       ░░░░░░░░░░░ 收盘（本地部署，已放弃 Docker）
 ```
 
-测试基线：pytest 221 通过 · pyright 0 errors · ruff 全绿 · web typecheck/lint/build 全绿。
+测试基线：pytest 222 通过 · pyright 0 errors · ruff 全绿 · web typecheck/lint/build 全绿。
 
 知识库：双领域并存——大数据工程（bigdata-analysis，31 条）+ Linux 运维（linux-ops，18 条）；建会话时自选领域（换 seeds 子目录即换领域，零代码）。
 
