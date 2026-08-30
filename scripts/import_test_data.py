@@ -250,10 +250,11 @@ def main() -> None:
     db_path = args.db
     data_dir = Path(args.data_dir) if args.data_dir else None
 
-    # 自动查找测试数据目录
+    # 自动查找测试数据目录（提交包解压后在源码根目录内，2026-08-30 合体包结构）
     if data_dir is None:
-        # 尝试常见交付包位置
+        # 尝试常见位置：源码内（合体提交包）→ 旧交付包结构 → 其他约定位置
         candidates = [
+            ROOT / "测试数据" / "02-会话示例",
             ROOT.parent / "03-测试数据包" / "02-会话示例",
             ROOT / "dist" / "交付包" / "03-测试数据包" / "02-会话示例",
             ROOT / "data" / "test-sessions",

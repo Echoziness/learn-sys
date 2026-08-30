@@ -79,14 +79,31 @@ def _human_size(n: float) -> str:
 def archive_source(out_dir: Path) -> Path:
     """git archive HEAD：只含已追踪文件（模型/DB 未入 git，天然排除）。
     用 zip 而非默认 tar.gz：评委大概率在 Windows 开箱，zip 右键即解、与模型包形态统一。"""
-    out = out_dir / "01-源码" / "learn-sys-源码.zip"
-    out.parent.mkdir(parents=True, exist_ok=True)
+    out = out_dir / "tmp-src.zip"
     subprocess.run(
         ["git", "archive", "--format=zip", "--prefix=learn-sys/", "HEAD", "-o", str(out)],
         cwd=ROOT,
         check=True,
         capture_output=True,
     )
+    return out
+
+
+def build_ready_zip(out_dir: Path, src_zip: Path, tdp_dir: Path) -> Path:
+    """合体包（解压即启动，2026-08-30）：源码 + 预构建数据库 + 会话示例单 zip。
+
+    解压得到 learn-sys/：源码 + data/seeds（已在 git）+ data/knowledge.db（注入，
+    回放零门槛）+ 测试数据/（50 组会话示例）；再解压模型包即可实时教学。
+    """
+    out = out_dir / "learn-sys-提交包.zip"
+    with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        with zipfile.ZipFile(src_zip) as src:
+            for info in src.infolist():
+                zf.writestr(info, src.read(info.filename))
+        zf.write(DB_PATH, "learn-sys/data/knowledge.db")
+        for p in sorted(tdp_dir.rglob("*")):
+            if p.is_file():
+                zf.write(p, "learn-sys/测试数据" / p.relative_to(tdp_dir))
     return out
 
 
@@ -295,15 +312,15 @@ def main() -> None:
     conn.row_factory = sqlite3.Row
     store = SessionStore(str(DB_PATH))
 
-    # ---------- 1. 源码归档 ----------
+    # ---------- 1. 源码归档（临时，待合体） ----------
     src = archive_source(out)
-    print(f"[1/4] 源码归档：{src.name}（{_human_size(src.stat().st_size)}）")
+    print(f"[1/4] 源码归档：{_human_size(src.stat().st_size)}")
 
     # ---------- 2. 部署说明 ----------
     shutil.copy(DEPLOY_DOC, out / "02-部署说明.md")
 
-    # ---------- 3. 测试数据包 ----------
-    tdp = out / "03-测试数据包"
+    # ---------- 3. 测试数据（临时目录，待合体入包） ----------
+    tdp = out / "tmp-测试数据"
     (tdp / "01-知识库切片").mkdir(parents=True)
     shutil.copy(SEEDS_ENTRIES, tdp / "01-知识库切片" / "bigdata-analysis-entries.jsonl")
 
@@ -365,21 +382,22 @@ def main() -> None:
     ]
     (tdp / "README.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    # ---------- 4. 预构建数据库（回放零门槛：解压即用，无需 init_db） ----------
-    db_zip = out / "05-预构建数据库" / "knowledge-db.zip"
-    db_zip.parent.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(db_zip, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        zf.write(DB_PATH, "data/knowledge.db")
-    print(f"[3/4] 预构建数据库：{db_zip.name}（{_human_size(db_zip.stat().st_size)}）")
+    # ---------- 4. 合体提交包（解压即启动：源码+预构建库+会话示例单 zip） ----------
+    ready = build_ready_zip(out, src, tdp)
+    shutil.rmtree(tdp)
+    src.unlink()
+    print(f"[2/4] 合体提交包：{ready.name}（{_human_size(ready.stat().st_size)}）")
+    print("      解压即启动：含预构建数据库与 50 组会话示例")
+    db_size = _human_size(DB_PATH.stat().st_size)
 
-    # ---------- 5. 模型打包（可选）+ 清单 ----------
+    # ---------- 5. 模型打包（可选，单独走云盘）+ 清单 ----------
     model_note = "未打包（默认）。请手动压缩后随交付包提交："
     model_zip = out / "04-模型文件" / "bge-m3.zip"
     if args.zip_model:
         model_zip.parent.mkdir(parents=True, exist_ok=True)
         print("[3/4] 打包模型（精简缓存形态：活跃 revision 实体化，约 2.2G，数分钟）…")
         zip_bge_model(model_zip)
-        model_note = "已打包（存储模式）"
+        model_note = "已打包（存储模式，建议单独上传云盘，链接+提取码写入提交邮件）"
     else:
         print("[3/4] 跳过模型打包（--zip-model 可开启）")
 
@@ -400,24 +418,25 @@ def main() -> None:
         "",
         "## 内容",
         "",
-        f"- `01-源码/{src.name}`（{_human_size(src.stat().st_size)}，SHA-256 `{_sha256(src)[:16]}…`）",
-        "- `02-部署说明.md` —— 本地部署步骤（环境要求/模型放置/.env 配置/验收）",
-        f"- `03-测试数据包/` —— 知识库切片 + {len(summaries)} 组完整输入输出示例",
-        f"- `05-预构建数据库/{db_zip.name}`（{_human_size(db_zip.stat().st_size)}）——预构建 knowledge.db："
-        "解压到源码根目录即可直接启动回放，无需运行 init_db（仅回放路径的最短路径）",
+        f"- `learn-sys-提交包.zip`（{_human_size(ready.stat().st_size)}，SHA-256 `{_sha256(ready)[:16]}…`）",
+        "  解压即启动：源码 + 知识库切片（data/seeds）+ 预构建数据库（data/knowledge.db，"
+        f"{db_size}，回放零门槛）+ 测试数据/（知识库切片 + {len(summaries)} 组完整输入输出示例）",
+        "- `02-部署说明.md` —— 本地部署步骤（环境要求/模型放置/.env 配置/验收；包内 docs/ 同含一份）",
         f"- 模型文件（BGE-M3 精简缓存，解压后约 {bge_zip_estimate}）：{model_note}",
         "",
         "```bash",
-        "# 在源码根目录执行（zip 内顶层为 data/，解压即到位，零搬运）：",
-        "cd <源码根目录> && unzip <交付包>/05-预构建数据库/knowledge-db.zip   # 回放必需",
-        "cd <源码根目录> && unzip <交付包>/04-模型文件/bge-m3.zip   # 得到 data/bge-m3/（实时教学需要）",
+        "# 评委最短路径（只看回放，不需要模型与 LLM 密钥）：",
+        "unzip learn-sys-提交包.zip && cd learn-sys",
+        "uv sync && uv run uvicorn api.main:app --port 8000",
+        "cd web && pnpm install && pnpm build && pnpm start   # 另开一个终端",
+        "# 实时教学另需：解压模型包到 learn-sys/ 并在 .env 填 LLM 配置",
+        "cd learn-sys && unzip ../04-模型文件/bge-m3.zip   # 得到 data/bge-m3/",
         "```",
         "",
         "## 提交前校验",
         "",
         "- [ ] 压缩包命名：学校—姓名—作品名称—联系电话（赛题第八条）",
-        "- [ ] 预构建数据库已解压到源码根目录（回放必需；已跑过 init_db 可跳过）",
-        "- [ ] 模型目录已放入源码 `data/bge-m3/`（**模型未入 git，必须手动入包**；仅回放可省略）",
+        "- [ ] 模型包单独上传云盘，链接+提取码已写入提交邮件（或随包提交）",
         "- [ ] 设计实现方案 / PPT / 10 分钟演示视频 / 报名表（盖章扫描件）已随包",
         "- [ ] 干净环境按《部署说明》走通全流程",
     ]
