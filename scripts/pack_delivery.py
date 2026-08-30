@@ -89,7 +89,7 @@ def archive_source(out_dir: Path) -> Path:
     return out
 
 
-def build_ready_zip(out_dir: Path, src_zip: Path, tdp_dir: Path) -> Path:
+def build_ready_zip(out_dir: Path, src_zip: Path, tdp_dir: Path, db_file: Path) -> Path:
     """合体包（解压即启动，2026-08-30）：源码 + 预构建数据库 + 会话示例单 zip。
 
     解压得到 learn-sys/：源码 + data/seeds（已在 git）+ data/knowledge.db（注入，
@@ -100,11 +100,31 @@ def build_ready_zip(out_dir: Path, src_zip: Path, tdp_dir: Path) -> Path:
         with zipfile.ZipFile(src_zip) as src:
             for info in src.infolist():
                 zf.writestr(info, src.read(info.filename))
-        zf.write(DB_PATH, "learn-sys/data/knowledge.db")
+        zf.write(db_file, "learn-sys/data/knowledge.db")
         for p in sorted(tdp_dir.rglob("*")):
             if p.is_file():
                 zf.write(p, "learn-sys/测试数据" / p.relative_to(tdp_dir))
     return out
+
+
+def build_filtered_db(db_path: Path, out_dir: Path) -> Path:
+    """打包用预构建库：只保留已完成的评测会话（2026-08-31）。
+    开发库含调试残留（demo 会话/未完成的失败重跑），直接入包会让会话列表显示的数字与文档"50 组"对不上；
+    复制一份临时库过滤，不碰开发库本体。"""
+    filtered = out_dir / "tmp-knowledge.db"
+    shutil.copy(db_path, filtered)
+    eval_learners = {p.stem for p in PROFILES_DIR.glob("*.json")}
+    store = SessionStore(str(filtered))
+    db = sqlite3.connect(filtered)
+    rows = db.execute("SELECT session_id, learner_id, finished_at FROM sessions").fetchall()
+    db.close()
+    removed = 0
+    for sid, learner, finished in rows:
+        if learner not in eval_learners or finished is None:
+            store.delete_session(sid, keep_packages=False, keep_exports=False)
+            removed += 1
+    print(f"[2.5/4] 预构建库过滤：{len(rows) - removed} 组评测会话入包，剔除 {removed} 组调试/未完成会话")
+    return filtered
 
 
 def select_sessions(
@@ -382,10 +402,12 @@ def main() -> None:
     ]
     (tdp / "README.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    # ---------- 4. 合体提交包（解压即启动：源码+预构建库+会话示例单 zip） ----------
-    ready = build_ready_zip(out, src, tdp)
+    # ---------- 4. 合体提交包（解压即启动：源码+过滤后预构建库+会话示例单 zip） ----------
+    filtered_db = build_filtered_db(DB_PATH, out)
+    ready = build_ready_zip(out, src, tdp, filtered_db)
     shutil.rmtree(tdp)
     src.unlink()
+    filtered_db.unlink()
     print(f"[2/4] 合体提交包：{ready.name}（{_human_size(ready.stat().st_size)}）")
     print("      解压即启动：含预构建数据库与 50 组会话示例")
     db_size = _human_size(DB_PATH.stat().st_size)
@@ -425,11 +447,12 @@ def main() -> None:
         f"- 模型文件（BGE-M3 精简缓存，解压后约 {bge_zip_estimate}）：{model_note}",
         "",
         "```bash",
-        "# 评委最短路径（只看回放，不需要模型与 LLM 密钥）：",
+        "# 评委最短路径（只看回放，不需要模型与 LLM 密钥）；",
+        "# Windows PowerShell 先执行：$env:HF_HUB_OFFLINE = 1（bash 用 export）",
         "unzip learn-sys-提交包.zip && cd learn-sys",
-        "uv sync && uv run uvicorn api.main:app --port 8000",
+        "uv sync && HF_HUB_OFFLINE=1 uv run uvicorn api.main:app --port 8000",
         "cd web && pnpm install && pnpm build && pnpm start   # 另开一个终端",
-        "# 实时教学另需：解压模型包到 learn-sys/ 并在 .env 填 LLM 配置",
+        "# 实时教学另需：解压模型包到 learn-sys/ 并在 .env 填真实 LLM 配置（占位值不算接通）",
         "cd learn-sys && unzip ../04-模型文件/bge-m3.zip   # 得到 data/bge-m3/",
         "```",
         "",

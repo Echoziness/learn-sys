@@ -77,6 +77,17 @@ def _has_sessions_table(db_path: Path) -> bool:
         db.close()
 
 
+def _has_model_weights(model_dir: Path) -> bool:
+    """权重文件检测：safetensors 与 sentence-transformers 的 pytorch_model.bin 两种形态
+    都存在——交付包随携模型是后者（2026-08-31 Windows 实测：只认 safetensors 会误报缺模型）。"""
+    return any(model_dir.rglob("*.safetensors")) or any(model_dir.rglob("pytorch_model.bin"))
+
+
+def _is_placeholder(value: str | None) -> bool:
+    """.env.example 占位值不算已配置——防无密钥用户拿到"LLM 已接通"的假就绪状态。"""
+    return bool(value) and "your" in value.lower()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from dotenv import load_dotenv
@@ -89,8 +100,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     db_path = Path(settings.database_path)
     db_ready = _has_sessions_table(db_path)
     model_dir = Path(settings.bge_model_path)
-    encoder_available = model_dir.exists() and any(model_dir.rglob("*.safetensors"))
-    llm_configured = bool(settings.llm_base_url and settings.llm_api_key and settings.llm_model)
+    encoder_available = model_dir.exists() and _has_model_weights(model_dir)
+    llm_configured = (
+        bool(settings.llm_base_url and settings.llm_api_key and settings.llm_model)
+        and not any(
+            _is_placeholder(v)
+            for v in (settings.llm_base_url, settings.llm_api_key, settings.llm_model)
+        )
+    )
 
     app.state.settings = settings
     store = SessionStore(settings.database_path) if db_ready else None
