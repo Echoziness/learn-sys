@@ -36,6 +36,17 @@ export interface Domain {
   entry_count: number;
 }
 
+/** 环境状态（GET /api/status）：降级启动时页面展示缺什么 */
+export interface ApiStatus {
+  db_ready: boolean;
+  encoder_available: boolean;
+  llm_configured: boolean;
+  teaching_ready: boolean;
+  replay_ready: boolean;
+  domains: Domain[];
+  missing: string[];
+}
+
 export interface PlanTopic {
   entry_id: string;
   title: string;

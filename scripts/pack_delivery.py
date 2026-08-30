@@ -365,7 +365,14 @@ def main() -> None:
     ]
     (tdp / "README.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    # ---------- 4. 模型打包（可选）+ 清单 ----------
+    # ---------- 4. 预构建数据库（回放零门槛：解压即用，无需 init_db） ----------
+    db_zip = out / "05-预构建数据库" / "knowledge-db.zip"
+    db_zip.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(db_zip, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.write(DB_PATH, "data/knowledge.db")
+    print(f"[3/4] 预构建数据库：{db_zip.name}（{_human_size(db_zip.stat().st_size)}）")
+
+    # ---------- 5. 模型打包（可选）+ 清单 ----------
     model_note = "未打包（默认）。请手动压缩后随交付包提交："
     model_zip = out / "04-模型文件" / "bge-m3.zip"
     if args.zip_model:
@@ -396,17 +403,21 @@ def main() -> None:
         f"- `01-源码/{src.name}`（{_human_size(src.stat().st_size)}，SHA-256 `{_sha256(src)[:16]}…`）",
         "- `02-部署说明.md` —— 本地部署步骤（环境要求/模型放置/.env 配置/验收）",
         f"- `03-测试数据包/` —— 知识库切片 + {len(summaries)} 组完整输入输出示例",
+        f"- `05-预构建数据库/{db_zip.name}`（{_human_size(db_zip.stat().st_size)}）——预构建 knowledge.db："
+        "解压到源码根目录即可直接启动回放，无需运行 init_db（仅回放路径的最短路径）",
         f"- 模型文件（BGE-M3 精简缓存，解压后约 {bge_zip_estimate}）：{model_note}",
         "",
         "```bash",
         "# 在源码根目录执行（zip 内顶层为 data/，解压即到位，零搬运）：",
-        "cd <源码根目录> && unzip <交付包>/04-模型文件/bge-m3.zip   # 得到 data/bge-m3/models--BAAI--bge-m3/",
+        "cd <源码根目录> && unzip <交付包>/05-预构建数据库/knowledge-db.zip   # 回放必需",
+        "cd <源码根目录> && unzip <交付包>/04-模型文件/bge-m3.zip   # 得到 data/bge-m3/（实时教学需要）",
         "```",
         "",
         "## 提交前校验",
         "",
         "- [ ] 压缩包命名：学校—姓名—作品名称—联系电话（赛题第八条）",
-        "- [ ] 模型目录已放入源码 `data/bge-m3/`（**模型未入 git，必须手动入包**）",
+        "- [ ] 预构建数据库已解压到源码根目录（回放必需；已跑过 init_db 可跳过）",
+        "- [ ] 模型目录已放入源码 `data/bge-m3/`（**模型未入 git，必须手动入包**；仅回放可省略）",
         "- [ ] 设计实现方案 / PPT / 10 分钟演示视频 / 报名表（盖章扫描件）已随包",
         "- [ ] 干净环境按《部署说明》走通全流程",
     ]

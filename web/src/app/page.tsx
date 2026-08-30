@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import { PipelineFlow } from "@/components/landing/pipeline-flow";
+import { EnvBanner } from "@/components/shared/env-banner";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -58,6 +59,11 @@ const METRICS = [
 export default function HomePage() {
   return (
     <div className="-mx-4 -my-8 sm:-mx-6">
+      {/* 环境状态：降级启动时展示缺什么（环境完整时不渲染） */}
+      <div className="mx-auto max-w-7xl px-4 pt-6 sm:px-6">
+        <EnvBanner />
+      </div>
+
       {/* ① Hero */}
       <section className="relative overflow-hidden">
         {/* 底纹：极淡点阵 + 顶部径向光 */}

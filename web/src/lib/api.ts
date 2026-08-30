@@ -43,6 +43,7 @@ export function deleteJson<T>(path: string): Promise<T> {
 export const api = {
   createSession: (payload: unknown) => postJson<import("@/lib/types").CreateSessionResponse>("/api/sessions", payload),
   listDomains: () => getJson<import("@/lib/types").Domain[]>("/api/sessions/domains"),
+  getStatus: () => getJson<import("@/lib/types").ApiStatus>("/api/status"),
   getSession: (id: string) => getJson<import("@/lib/types").SessionDetail>(`/api/sessions/${id}`),
   listSessions: (limit = 100) =>
     getJson<import("@/lib/types").SessionListItem[]>(`/api/sessions?limit=${limit}`),

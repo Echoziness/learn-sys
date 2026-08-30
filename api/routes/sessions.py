@@ -43,12 +43,25 @@ resources_router = APIRouter(prefix="/api", tags=["resources"])
 
 
 def _deps(request: Request):
-    """进程级装配依赖（lifespan 注入）。"""
-    store = getattr(request.app.state, "store", None)
+    """教学链路依赖（建会话/教学/出题/作答等）：降级启动时返回 503 + 缺失说明。"""
+    store = _store_only(request)
     loop = getattr(request.app.state, "loop", None)
-    if store is None or loop is None:
-        raise HTTPException(503, "服务装配中，请稍候重试")
+    if loop is None:
+        status = getattr(request.app.state, "status", {})
+        missing = status.get("missing", [])
+        detail = "；".join(missing) if missing else "教学链路未就绪"
+        raise HTTPException(503, f"教学功能不可用：{detail}")
     return store, loop
+
+
+def _store_only(request: Request):
+    """只读 DB 依赖（列表/回放/报告/资源类端点）：降级模式下照常服务。"""
+    store = getattr(request.app.state, "store", None)
+    if store is None:
+        raise HTTPException(
+            503, "数据库未就绪：运行 scripts/init_db.py，或将交付包 05-预构建数据库解压到源码根目录"
+        )
+    return store
 
 
 def _session_or_404(store, session_id: str) -> None:
@@ -98,13 +111,13 @@ async def create_session(req: CreateSessionRequest, request: Request):
 @router.get("", response_model=list[SessionListItemOut])
 async def list_sessions(request: Request, limit: int = 100):
     """历史会话列表（回放入口页）。"""
-    store, _ = _deps(request)
+    store = _store_only(request)
     return store.list_sessions(limit=min(limit, 500))
 
 
 @router.get("/{session_id}")
 async def get_session(session_id: str, request: Request):
-    store, _ = _deps(request)
+    store = _store_only(request)
     session = store.get_session(session_id)
     if session is None:
         raise HTTPException(404, "会话不存在")
@@ -208,7 +221,8 @@ async def followup_ask(
 
 @router.get("/{session_id}/report")
 async def report(session_id: str, request: Request):
-    store, loop = _deps(request)
+    """学情报告数据（三图 + 三指标，只读）——降级模式可用。"""
+    store = _store_only(request)
     session = store.get_session(session_id)
     if session is None:
         raise HTTPException(404, "会话不存在")
@@ -292,7 +306,7 @@ async def report(session_id: str, request: Request):
 
 @router.get("/{session_id}/resources")
 async def resources(session_id: str, request: Request):
-    store, _ = _deps(request)
+    store = _store_only(request)
     _session_or_404(store, session_id)
     return store.load_packages(session_id)
 
@@ -300,7 +314,7 @@ async def resources(session_id: str, request: Request):
 @router.get("/{session_id}/exports", response_model=list[ExportedEntryOut])
 async def exports(session_id: str, request: Request):
     """条目化导出产物（知识库同构条目，FR-23）——由导出管线产出后落库。"""
-    store, _ = _deps(request)
+    store = _store_only(request)
     _session_or_404(store, session_id)
     return store.load_export_entries(session_id)
 
@@ -308,7 +322,7 @@ async def exports(session_id: str, request: Request):
 @router.post("/{session_id}/export")
 async def export_packages(session_id: str, request: Request):
     """主动触发资源包条目化导出（Web 入口）：收集 → distill 提炼 → 自检 → 落库 → 事件。"""
-    store, _ = _deps(request)
+    store = _store_only(request)
     session = store.get_session(session_id)
     if session is None:
         raise HTTPException(404, "会话不存在")
@@ -344,7 +358,7 @@ async def export_download(session_id: str, request: Request):
 
     会话已删但产物保留（keep_exports）时仍可下载——资源库页孤儿来源依赖此行为。
     """
-    store, _ = _deps(request)
+    store = _store_only(request)
     stored = store.load_export_entries(session_id)
     if not stored:
         raise HTTPException(409, "尚无导出条目，请先触发导出")
@@ -371,7 +385,7 @@ async def delete_session(
     keep_exports: bool = False,
 ):
     """删除会话与过程数据（事件/轮次/掌握度）；资源包与导出条目可按参数额外保留。"""
-    store, _ = _deps(request)
+    store = _store_only(request)
     _session_or_404(store, session_id)
     deleted = store.delete_session(
         session_id, keep_packages=keep_packages, keep_exports=keep_exports
@@ -396,7 +410,7 @@ async def all_resources(
     request: Request, session_id: str | None = None, entry_id: str | None = None
 ):
     """跨会话聚合资源包与导出条目（资源库页面数据源），可按来源会话/条目筛选。"""
-    store, _ = _deps(request)
+    store = _store_only(request)
     return ResourcesAggregateOut(
         packages=[AggregatedPackageOut(**p) for p in store.load_all_packages(
             session_id=session_id, entry_id=entry_id
@@ -413,7 +427,7 @@ async def replay(session_id: str, request: Request, after_seq: int = 0, format: 
 
     format=json 返回带 seq 的数组（前端播放器步进/进度条用）；默认 SSE 流。
     """
-    store, _ = _deps(request)
+    store = _store_only(request)
     _session_or_404(store, session_id)
 
     if format == "json":
@@ -441,7 +455,7 @@ async def stream(session_id: str, request: Request, after_seq: int = 0):
     顺序保证：先 subscribe 再补读历史——两者重叠的事件按 seq 去重。
     session_end / error 后自然收流；其余情况保持连接（keep-alive 注释帧）。
     """
-    store, _ = _deps(request)
+    store = _store_only(request)
     _session_or_404(store, session_id)
     queue = store.subscribe(session_id)
 
